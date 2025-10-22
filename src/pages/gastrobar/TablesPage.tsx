@@ -142,6 +142,12 @@ const TablesPage: React.FC = () => {
   const [now, setNow] = useState<number>(Date.now());
   const [loading, setLoading] = useState<boolean>(false);
 
+  /**
+   * Carga desde configuración (LS_TABLES) y runtime (LS_RUNTIME).
+   * IMPORTANTE: ya no filtramos por `active === true`. Mostramos TODO lo configurado:
+   * - Activas: según su estado (libre/ocupada/reservada)
+   * - Inactivas o fuera de servicio: agrupadas en "Fuera de servicio"
+   */
   const load = () => {
     setLoading(true);
     try {
@@ -151,7 +157,6 @@ const TablesPage: React.FC = () => {
       const rt: Record<string, Runtime> = rraw ? JSON.parse(rraw) : {};
 
       const mapped: TableCard[] = cfg
-        .filter((t) => t.active === true)
         .map((t) => {
           const status = mapStatus(t.status, t.active);
           const r = rt[String(t.id)];
@@ -242,9 +247,9 @@ const TablesPage: React.FC = () => {
       <div className="mx-auto mb-2 h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center">
         <TableIcon size={18} className="text-indigo-600" />
       </div>
-      <h3 className="text-base font-semibold text-gray-900">Aún no hay mesas activas</h3>
+      <h3 className="text-base font-semibold text-gray-900">Aún no hay mesas configuradas</h3>
       <p className="text-sm text-gray-600 mt-1">
-        Configura tus mesas en <span className="font-medium">Configuración &gt; Mesas</span>. Solo se muestran las mesas marcadas como <em>activas</em>.
+        Crea y/o activa mesas en <span className="font-medium">Configuración &gt; Mesas</span>. Aquí verás todas las mesas (activas e inactivas).
       </p>
       <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
         <button
@@ -269,7 +274,7 @@ const TablesPage: React.FC = () => {
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Mesas</h1>
-          <p className="text-gray-600">Estado general del salón (según Configuración &gt; Mesas)</p>
+          <p className="text-gray-600">Listado en vivo según <span className="font-medium">Configuración &gt; Mesas</span> (se muestran activas e inactivas).</p>
         </div>
         <button
           onClick={load}
@@ -442,11 +447,11 @@ const TablesPage: React.FC = () => {
         </section>
       )}
 
-      {/* FUERA DE SERVICIO */}
+      {/* FUERA DE SERVICIO / INACTIVAS */}
       {groups.disabled.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold mb-2 flex items-center text-gray-700">
-            <AlertTriangleIcon size={18} className="mr-2" /> Fuera de servicio
+            <AlertTriangleIcon size={18} className="mr-2" /> Fuera de servicio / Inactivas
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {groups.disabled.map((t) => (
@@ -457,6 +462,11 @@ const TablesPage: React.FC = () => {
                     Inhabilitada
                   </span>
                 </div>
+                {t.zone ? (
+                  <div className="text-xs text-gray-600 mt-1 flex items-center">
+                    <MapPinIcon size={12} className="mr-1" /> {t.zone}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

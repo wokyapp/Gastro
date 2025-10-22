@@ -83,10 +83,10 @@ const LoginPage = () => {
             <UtensilsIcon className="h-8 w-8 text-white" />
           </div>
           <h2 className="mt-3 text-2xl font-bold text-gray-900">
-            Woky Gastrobar
+            Woky | Gastro
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Sistema de gestión de restaurante
+            Sistema de gestión de gastronomía
           </p>
         </div>
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
