@@ -167,7 +167,7 @@ const GastrobarLayout = () => {
             <div className="bg-blue-600 text-white p-1.5 rounded">
               <UtensilsIcon size={20} aria-hidden="true" />
             </div>
-            <span className="text-lg font-bold text-blue-800 ml-2">Gastrobar POS</span>
+            <span className="text-lg font-bold text-blue-800 ml-2">Woky | Gastro</span>
           </div>
 
           <div className="flex items-center space-x-4">
