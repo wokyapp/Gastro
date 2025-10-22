@@ -249,7 +249,7 @@ const TablesPage: React.FC = () => {
       </div>
       <h3 className="text-base font-semibold text-gray-900">Aún no hay mesas configuradas</h3>
       <p className="text-sm text-gray-600 mt-1">
-        Crea y/o activa mesas en <span className="font-medium">Configuración &gt; Mesas</span>. Aquí verás todas las mesas (activas e inactivas).
+        Crea y/o activa mesas en <span className="font-medium">Ajustes &gt; Mesas</span>. Aquí verás todas las mesas (activas e inactivas).
       </p>
       <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
         <button
