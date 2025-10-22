@@ -1,3 +1,4 @@
+// src/pages/ReservationsPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
@@ -5,11 +6,13 @@ import {
 } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 
-// ===== Claves de Storage =====
+/** ===================== Claves de Storage ===================== **/
 const LS_TABLES = 'woky.tables';
 const LS_RESERVATIONS = 'woky.reservations';
 const LS_RUNTIME = 'woky.tables.runtime';
+const SS_RES_SESSION = 'woky.reservations.sessionId'; // <- sesión actual de reservas (solo mostrar las nuevas)
 
+/** ===================== Tipos ===================== **/
 type TableItem = {
   id: string;
   number: number;
@@ -26,34 +29,17 @@ type Reservation = {
   name: string;
   phone: string;
   identification?: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:mm
+  date: string;   // YYYY-MM-DD
+  time: string;   // HH:mm
   guests: number;
   tableId: string;
   tableNumber: number;
   status: 'confirmed' | 'pending' | 'cancelled' | 'completed';
   notes?: string;
-};
 
-// ==== Utils fecha ====
-const todayStr = () => new Date().toISOString().split('T')[0];
-const isToday = (yyyy_mm_dd: string) => yyyy_mm_dd === todayStr();
-
-// ==== Helpers LS =====
-const getTables = (): TableItem[] => {
-  try { return JSON.parse(localStorage.getItem(LS_TABLES) || '[]'); } catch { return []; }
-};
-const setTables = (list: TableItem[]) => {
-  localStorage.setItem(LS_TABLES, JSON.stringify(list));
-  window.dispatchEvent(new StorageEvent('storage', { key: LS_TABLES, newValue: JSON.stringify(list) }));
-};
-
-const getReservations = (): Reservation[] => {
-  try { return JSON.parse(localStorage.getItem(LS_RESERVATIONS) || '[]'); } catch { return []; }
-};
-const setReservationsLS = (list: Reservation[]) => {
-  localStorage.setItem(LS_RESERVATIONS, JSON.stringify(list));
-  window.dispatchEvent(new StorageEvent('storage', { key: LS_RESERVATIONS, newValue: JSON.stringify(list) }));
+  /** NUEVO: metadatos para filtrar solo “las que creo nuevas” */
+  createdAt?: string;      // ISO
+  sessionId?: string;      // id de sesión para mostrar solo las creadas en esta sesión
 };
 
 type Runtime = {
@@ -68,15 +54,43 @@ type Runtime = {
   occupiedSince?: string;
   deliveredAt?: string;
 };
+
+/** ===================== Utils fecha ===================== **/
+const todayStr = () => new Date().toISOString().split('T')[0];
+const isToday = (yyyy_mm_dd: string) => yyyy_mm_dd === todayStr();
+
+/** ===================== Helpers LS (inline, sin store externo) ===================== **/
+const getTables = (): TableItem[] => {
+  try { return JSON.parse(localStorage.getItem(LS_TABLES) || '[]'); } catch { return []; }
+};
+const setTables = (list: TableItem[]) => {
+  const payload = JSON.stringify(list);
+  localStorage.setItem(LS_TABLES, payload);
+  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_TABLES, newValue: payload })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('woky:tables-updated')); } catch {}
+};
+
+const getReservations = (): Reservation[] => {
+  try { return JSON.parse(localStorage.getItem(LS_RESERVATIONS) || '[]'); } catch { return []; }
+};
+const saveReservations = (list: Reservation[]) => {
+  const payload = JSON.stringify(list);
+  localStorage.setItem(LS_RESERVATIONS, payload);
+  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_RESERVATIONS, newValue: payload })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('woky:reservations-updated')); } catch {}
+};
+
 const getRuntime = (): Record<string, Runtime> => {
   try { return JSON.parse(localStorage.getItem(LS_RUNTIME) || '{}'); } catch { return {}; }
 };
 const setRuntime = (rt: Record<string, Runtime>) => {
-  localStorage.setItem(LS_RUNTIME, JSON.stringify(rt));
-  window.dispatchEvent(new StorageEvent('storage', { key: LS_RUNTIME, newValue: JSON.stringify(rt) }));
+  const payload = JSON.stringify(rt);
+  localStorage.setItem(LS_RUNTIME, payload);
+  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_RUNTIME, newValue: payload })); } catch {}
+  try { window.dispatchEvent(new CustomEvent('woky:tables-updated')); } catch {}
 };
 
-// ==== Side-effects Mesas según reserva ====
+/** ===================== Side-effects Mesas/Runtime desde Reservas ===================== **/
 const setTableStatus = (tableId: string, status: TableItem['status']) => {
   const tables = getTables();
   const idx = tables.findIndex(t => String(t.id) === String(tableId));
@@ -86,25 +100,14 @@ const setTableStatus = (tableId: string, status: TableItem['status']) => {
   }
 };
 
-const seatReservationAtTable = (tableId: string, customerName: string) => {
-  // Mesa -> ocupada
-  setTableStatus(tableId, 'ocupada');
-  // Runtime -> ocupar con nombre del cliente
-  const rt = getRuntime();
-  const key = String(tableId);
-  const prev = rt[key] || { tableId };
-  rt[key] = {
-    ...prev,
-    customerName,
-    kitchenStatus: prev.kitchenStatus || undefined, // aún sin orden
-    occupiedSince: prev.occupiedSince || new Date().toISOString(),
-  };
-  setRuntime(rt);
+const reserveTableIfToday = (res: Reservation) => {
+  if (res.tableId && isToday(res.date) && res.status === 'confirmed') {
+    setTableStatus(res.tableId, 'reservada');
+  }
 };
 
 const freeIfReservedToday = (res: Reservation) => {
   if (res.tableId && isToday(res.date)) {
-    // Solo liberar si la mesa estaba marcada reservada
     const tables = getTables();
     const idx = tables.findIndex(t => String(t.id) === String(res.tableId));
     if (idx >= 0 && tables[idx].status === 'reservada') {
@@ -114,49 +117,107 @@ const freeIfReservedToday = (res: Reservation) => {
   }
 };
 
-const reserveTableIfToday = (res: Reservation) => {
-  if (res.tableId && isToday(res.date) && res.status === 'confirmed') {
-    setTableStatus(res.tableId, 'reservada');
-  }
+const occupyTableForArrival = (tableId: string, customerName: string) => {
+  setTableStatus(tableId, 'ocupada');
+  const rt = getRuntime();
+  const key = String(tableId);
+  const prev = rt[key] || { tableId };
+  rt[key] = {
+    ...prev,
+    customerName,
+    occupiedSince: prev.occupiedSince || new Date().toISOString(),
+    kitchenStatus: prev.kitchenStatus || undefined
+  };
+  setRuntime(rt);
 };
 
+/** ===================== Página ===================== **/
 const ReservationsPage = () => {
   const { showToast } = useToast();
   const { softBtn, ctaGrad } = useOutletContext<any>();
 
-  // ===== Mesas desde Configuración =====
+  /** ====== SESIÓN DE RESERVAS: mostrar solo las creadas en esta sesión ====== **/
+  const [sessionId, setSessionId] = useState<string>('');
+  useEffect(() => {
+    // Persistimos el sessionId en sessionStorage para que sobreviva a reloads de esta pestaña,
+    // pero no a cerrar la pestaña (nuevo id en nueva sesión).
+    let sid = sessionStorage.getItem(SS_RES_SESSION);
+    if (!sid) {
+      sid = `S${Date.now()}`;
+      sessionStorage.setItem(SS_RES_SESSION, sid);
+    }
+    setSessionId(sid);
+  }, []);
+
+  /** Mesas **/
   const [tables, setTablesState] = useState<TableItem[]>([]);
   useEffect(() => {
     const loadTables = () => setTablesState(getTables().sort((a,b)=>a.number-b.number));
     loadTables();
+
     const onStorage = (e: StorageEvent) => { if (e.key === LS_TABLES) loadTables(); };
+    const onCustom = () => loadTables();
+
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('woky:tables-updated', onCustom as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('woky:tables-updated', onCustom as EventListener);
+    };
   }, []);
+  const activeTables = useMemo(() => tables.filter(t => t.active).sort((a,b)=>a.number-b.number), [tables]);
 
-  const activeTables = useMemo(
-    () => tables.filter(t => t.active).sort((a,b)=>a.number-b.number),
-    [tables]
-  );
-
-  // ===== Reservas (persistentes) =====
+  /** Reservas (persistentes) **/
   const [reservations, setReservationsState] = useState<Reservation[]>([]);
   useEffect(() => {
-    const loadRes = () => setReservationsState(getReservations());
-    loadRes();
-    const onStorage = (e: StorageEvent) => { if (e.key === LS_RESERVATIONS) loadRes(); };
+    const load = () => setReservationsState(getReservations());
+    load();
+
+    const onStorage = (e: StorageEvent) => { if (e.key === LS_RESERVATIONS) load(); };
+    const onCustom = () => load();
+    const onFocus = () => load();
+    const onVisibility = () => { if (!document.hidden) load(); };
+
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('woky:reservations-updated', onCustom as EventListener);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('woky:reservations-updated', onCustom as EventListener);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
-  // cada cambio -> persistir
-  useEffect(() => { setReservationsLS(reservations); }, [reservations]);
-
-  const [showReservationModal, setShowReservationModal] = useState(false);
+  /** Filtros / búsqueda **/
   const [reservationFilter, setReservationFilter] = useState<'all' | 'today' | 'upcoming' | 'pending'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ===== Form modal =====
+  // Solo mostrar RESERVAS de esta sesión (las “nuevas que voy creando ahora”)
+  const onlySessionReservations = useMemo(
+    () => reservations.filter(r => r.sessionId === sessionId),
+    [reservations, sessionId]
+  );
+
+  const filteredReservations = onlySessionReservations.filter(r => {
+    const today = todayStr();
+    const matchFilter =
+      reservationFilter === 'all' ||
+      (reservationFilter === 'today' && r.date === today) ||
+      (reservationFilter === 'upcoming' && r.date > today) ||
+      (reservationFilter === 'pending' && r.status === 'pending');
+    const matchSearch =
+      !searchTerm ||
+      r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.identification || '').toLowerCase().includes(searchTerm.toLowerCase());
+    return matchFilter && matchSearch;
+  });
+
+  /** Modal / Form **/
+  const [showReservationModal, setShowReservationModal] = useState(false);
   const [form, setForm] = useState({
     name: '',
     phone: '',
@@ -167,7 +228,6 @@ const ReservationsPage = () => {
     tableId: '',
     notes: ''
   });
-
   const resetForm = () => setForm({
     name: '',
     phone: '',
@@ -179,29 +239,7 @@ const ReservationsPage = () => {
     notes: ''
   });
 
-  // ===== Filtros lista =====
-  const filteredReservations = reservations.filter(reservation => {
-    const today = todayStr();
-    const matchesStatusFilter =
-      reservationFilter === 'all' ||
-      (reservationFilter === 'today' && reservation.date === today) ||
-      (reservationFilter === 'upcoming' && reservation.date > today) ||
-      (reservationFilter === 'pending' && reservation.status === 'pending');
-
-    const matchesSearch =
-      searchTerm === '' ||
-      reservation.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (reservation.identification && reservation.identification.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    return matchesStatusFilter && matchesSearch;
-  });
-
-  // ===== Helpers mesas =====
-  const findTableById = (id: string) => tables.find(t => t.id === id);
-  const tableLabel = (t: TableItem) =>
-    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${t.alias ? ` · ${t.alias}` : ''}`;
-
-  // ===== Guardar reserva =====
+  /** Guardar nueva reserva (persistente + señales) **/
   const handleSaveReservation = () => {
     if (!form.name.trim()) return showToast('error', 'Ingresa el nombre del cliente');
     if (!form.phone.trim()) return showToast('error', 'Ingresa el teléfono de contacto');
@@ -209,9 +247,9 @@ const ReservationsPage = () => {
     if (!form.time) return showToast('error', 'Selecciona la hora');
     if (form.guests <= 0) return showToast('error', 'La cantidad de personas debe ser mayor a 0');
 
-    const selectedTable = form.tableId ? findTableById(form.tableId) : undefined;
+    const sel = form.tableId ? tables.find(t => String(t.id) === String(form.tableId)) : undefined;
 
-    const newReservation: Reservation = {
+    const newRes: Reservation = {
       id: `r${Date.now()}`,
       name: form.name.trim(),
       phone: form.phone.trim(),
@@ -219,78 +257,86 @@ const ReservationsPage = () => {
       date: form.date,
       time: form.time,
       guests: form.guests,
-      tableId: selectedTable ? String(selectedTable.id) : '',
-      tableNumber: selectedTable ? selectedTable.number : 0,
-      status: selectedTable ? 'confirmed' : 'pending',
-      notes: form.notes.trim() || undefined
+      tableId: sel ? String(sel.id) : '',
+      tableNumber: sel ? sel.number : 0,
+      status: sel ? 'confirmed' : 'pending',
+      notes: form.notes.trim() || undefined,
+      createdAt: new Date().toISOString(), // <- marca nueva
+      sessionId,                           // <- pertenece a la sesión actual
     };
 
-    // Persistir
-    setReservationsState(prev => [...prev, newReservation]);
+    // Guardar
+    const next = [...reservations, newRes];
+    setReservationsState(next);
+    saveReservations(next);
 
-    // Si es hoy y confirmada con mesa -> marcar reservada en Mesas
-    reserveTableIfToday(newReservation);
+    // Efecto en Mesas
+    reserveTableIfToday(newRes);
 
-    showToast('success', 'Reservación creada correctamente');
+    showToast('success', 'Reservación creada');
     setShowReservationModal(false);
     resetForm();
   };
 
-  // ===== Acciones por tarjeta =====
+  /** Acciones por tarjeta **/
   const confirmReservation = (res: Reservation) => {
-    const updated: Reservation = { ...res, status: 'confirmed' };
-    setReservationsState(prev => prev.map(r => r.id === res.id ? updated : r));
-    reserveTableIfToday(updated);
+    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'confirmed' as const }) : r);
+    setReservationsState(next);
+    saveReservations(next);
+    reserveTableIfToday({ ...res, status: 'confirmed' });
     showToast('success', 'Reservación confirmada');
   };
 
   const cancelReservation = (res: Reservation) => {
-    setReservationsState(prev => prev.map(r => r.id === res.id ? { ...r, status: 'cancelled' } : r));
-    // si era hoy + mesa asignada -> liberar mesa si estaba reservada
+    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'cancelled' }) : r);
+    setReservationsState(next);
+    saveReservations(next);
     freeIfReservedToday(res);
     showToast('info', 'Reservación cancelada');
   };
 
   const registerArrival = (res: Reservation) => {
-    // Marcar la reserva como completada
-    setReservationsState(prev => prev.map(r => r.id === res.id ? ({ ...r, status: 'completed' }) : r));
+    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'completed' }) : r);
+    setReservationsState(next);
+    saveReservations(next);
 
     if (res.tableId) {
-      // Mesa -> ocupada + runtime con cliente
-      seatReservationAtTable(res.tableId, res.name);
+      occupyTableForArrival(res.tableId, res.name);
       showToast('success', `Cliente registrado en mesa ${res.tableNumber}`);
     } else {
-      showToast('warning', 'La reserva no tiene mesa asignada. Asigna una mesa para ocuparla.');
+      showToast('warning', 'La reserva no tiene mesa asignada');
     }
   };
 
-  // ===== UI =====
+  /** Helpers UI **/
+  const tableLabel = (t: TableItem) =>
+    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${t.alias ? ` · ${t.alias}` : ''}`;
+
+  /** Render **/
   return (
     <div className="space-y-4">
       <div className="bg-gradient-to-r from-blue-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
         <div className="bg-white/60 p-3 rounded-2xl">
           <h1 className="text-2xl font-bold text-gray-800">Reservaciones</h1>
-          <p className="text-sm text-gray-600">Gestión de reservas y disponibilidad</p>
+          <p className="text-sm text-gray-600">Solo se muestran las reservaciones creadas en esta sesión</p>
         </div>
       </div>
 
-      {/* Mesas desde Configuración */}
+      {/* Mesas activas (vista rápida) */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
         <div className="flex items-center mb-2 text-gray-700">
           <TableIcon size={18} className="mr-2 text-blue-600" />
           <span className="font-medium">Mesas (desde Configuración)</span>
-          <span className="ml-2 text-xs text-gray-500">Activas: {activeTables.length}</span>
+          <span className="ml-2 text-xs text-gray-500">
+            Activas: {useMemo(() => tables.filter(t => t.active).length, [tables])}
+          </span>
         </div>
         {activeTables.length === 0 ? (
           <p className="text-sm text-gray-500">No hay mesas creadas/activas aún.</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {activeTables.map(t => (
-              <span
-                key={t.id}
-                className="inline-flex items-center text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700"
-                title={tableLabel(t)}
-              >
+              <span key={t.id} className="inline-flex items-center text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700" title={tableLabel(t)}>
                 <span className="mr-1 font-medium">#{t.number}</span>
                 {t.zone && <span className="flex items-center mr-1 text-gray-500"><MapPinIcon size={12} className="mr-0.5"/>{t.zone}</span>}
                 {typeof t.capacity === 'number' && (
@@ -304,7 +350,7 @@ const ReservationsPage = () => {
         )}
       </div>
 
-      {/* Barra de búsqueda */}
+      {/* Búsqueda */}
       <div className="relative w-full mb-4">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <SearchIcon size={18} className="text-gray-400" />
@@ -317,16 +363,13 @@ const ReservationsPage = () => {
           className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
         />
         {searchTerm && (
-          <button
-            onClick={() => setSearchTerm('')}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-          >
+          <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
             <XIcon size={16} />
           </button>
         )}
       </div>
 
-      {/* Filtros y acciones */}
+      {/* Filtros + CTA */}
       <div className="flex flex-wrap justify-between items-center mb-4">
         <div className="flex flex-nowrap overflow-x-auto space-x-2">
           <button className={softBtn(reservationFilter === 'all' ? 'blue' : 'gray')} onClick={() => setReservationFilter('all')}>Todas</button>
@@ -334,89 +377,71 @@ const ReservationsPage = () => {
           <button className={softBtn(reservationFilter === 'upcoming' ? 'amber' : 'gray')} onClick={() => setReservationFilter('upcoming')}>Próximas</button>
           <button className={softBtn(reservationFilter === 'pending' ? 'red' : 'gray')} onClick={() => setReservationFilter('pending')}>Pendientes</button>
         </div>
-        <button className={`${ctaGrad()} inline-flex items-center whitespace-nowrap`} onClick={() => { resetForm(); setShowReservationModal(true); }}>
+        <button className={`${ctaGrad()} inline-flex items-center whitespace-nowrap`} onClick={() => { setShowReservationModal(true); }}>
           <PlusIcon size={16} className="mr-1" />
           Nueva reservación
         </button>
       </div>
 
-      {/* Lista de reservaciones */}
+      {/* Lista (SOLO de esta sesión) */}
       <div className="space-y-4">
-        {filteredReservations.map(reservation => (
-          <div key={reservation.id} className="border border-gray-100 rounded-2xl p-4 hover:border-blue-300 transition-colors bg-white shadow-sm">
+        {filteredReservations.map(res => (
+          <div key={res.id} className="border border-gray-100 rounded-2xl p-4 hover:border-blue-300 transition-colors bg-white shadow-sm">
             <div className="flex justify-between items-start">
               <div className="flex items-start">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-2 rounded-full mr-3 text-white shadow">
                   <UserIcon size={18} />
                 </div>
                 <div>
-                  <h3 className="font-medium">{reservation.name}</h3>
-                  <p className="text-sm text-gray-600">{reservation.phone}</p>
-                  {reservation.identification && (
-                    <p className="text-sm text-gray-600">ID: {reservation.identification}</p>
-                  )}
+                  <h3 className="font-medium">{res.name}</h3>
+                  <p className="text-sm text-gray-600">{res.phone}</p>
+                  {res.identification && <p className="text-sm text-gray-600">ID: {res.identification}</p>}
                   <div className="flex items-center mt-1 text-sm text-gray-500">
                     <CalendarIcon size={14} className="mr-1" />
-                    {new Date(reservation.date).toLocaleDateString('es-CO')} - {reservation.time}
+                    {new Date(res.date).toLocaleDateString('es-CO')} - {res.time}
                   </div>
                   <div className="flex items-center mt-1 text-sm">
                     <UserIcon size={14} className="mr-1 text-gray-500" />
-                    <span className="text-gray-500">{reservation.guests} personas</span>
-                    {reservation.tableNumber > 0 && (
+                    <span className="text-gray-500">{res.guests} personas</span>
+                    {res.tableNumber > 0 && (
                       <>
                         <span className="mx-1 text-gray-500">•</span>
-                        <span className="text-gray-500">Mesa {reservation.tableNumber}</span>
+                        <span className="text-gray-500">Mesa {res.tableNumber}</span>
                       </>
                     )}
                   </div>
-                  {reservation.notes && (
-                    <p className="text-xs text-gray-500 mt-1 italic">{reservation.notes}</p>
-                  )}
+                  {res.notes && <p className="text-xs text-gray-500 mt-1 italic">{res.notes}</p>}
                 </div>
               </div>
-              <span
-                className={`
-                  px-2 py-0.5 rounded-full text-xs font-medium
-                  ${reservation.status === 'confirmed' ? 'bg-green-100 text-green-800' : ''}
-                  ${reservation.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
-                  ${reservation.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
-                  ${reservation.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}
-                `}
-              >
-                {reservation.status === 'confirmed' ? 'Confirmada' : ''}
-                {reservation.status === 'pending' ? 'Pendiente' : ''}
-                {reservation.status === 'cancelled' ? 'Cancelada' : ''}
-                {reservation.status === 'completed' ? 'Completada' : ''}
+              <span className={`
+                px-2 py-0.5 rounded-full text-xs font-medium
+                ${res.status === 'confirmed' ? 'bg-green-100 text-green-800' : ''}
+                ${res.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
+                ${res.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
+                ${res.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}
+              `}>
+                {res.status === 'confirmed' ? 'Confirmada' : ''}
+                {res.status === 'pending' ? 'Pendiente' : ''}
+                {res.status === 'cancelled' ? 'Cancelada' : ''}
+                {res.status === 'completed' ? 'Completada' : ''}
               </span>
             </div>
 
-            {/* ACCIONES */}
+            {/* Acciones */}
             <div className="mt-3 flex flex-nowrap justify-end gap-2 overflow-x-auto">
-              {reservation.status === 'pending' && (
-                <button
-                  className={`${softBtn('green')} inline-flex items-center whitespace-nowrap`}
-                  onClick={() => confirmReservation(reservation)}
-                >
-                  <CheckIcon size={16} className="mr-1" />
-                  Confirmar
+              {res.status === 'pending' && (
+                <button className={`${softBtn('green')} inline-flex items-center whitespace-nowrap`} onClick={() => confirmReservation(res)}>
+                  <CheckIcon size={16} className="mr-1" /> Confirmar
                 </button>
               )}
-              {(reservation.status === 'confirmed' || reservation.status === 'pending') && (
-                <button
-                  className={`${softBtn('red')} inline-flex items-center whitespace-nowrap`}
-                  onClick={() => cancelReservation(reservation)}
-                >
-                  <XIcon size={16} className="mr-1" />
-                  Cancelar
+              {(res.status === 'confirmed' || res.status === 'pending') && (
+                <button className={`${softBtn('red')} inline-flex items-center whitespace-nowrap`} onClick={() => cancelReservation(res)}>
+                  <XIcon size={16} className="mr-1" /> Cancelar
                 </button>
               )}
-              {reservation.status === 'confirmed' && isToday(reservation.date) && (
-                <button
-                  className={`${softBtn('blue')} inline-flex items-center whitespace-nowrap`}
-                  onClick={() => registerArrival(reservation)}
-                >
-                  <UserIcon size={16} className="mr-1" />
-                  Registrar llegada
+              {res.status === 'confirmed' && isToday(res.date) && (
+                <button className={`${softBtn('blue')} inline-flex items-center whitespace-nowrap`} onClick={() => registerArrival(res)}>
+                  <UserIcon size={16} className="mr-1" /> Registrar llegada
                 </button>
               )}
             </div>
@@ -428,30 +453,25 @@ const ReservationsPage = () => {
             {searchTerm ? (
               <>
                 <UserSearchIcon size={40} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-gray-500">
-                  No se encontraron reservaciones que coincidan con “{searchTerm}”
-                </p>
+                <p className="text-gray-500">No se encontraron reservaciones que coincidan con “{searchTerm}”.</p>
               </>
             ) : (
               <>
                 <CalendarIcon size={40} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-gray-500">No hay reservaciones que coincidan con el filtro seleccionado</p>
+                <p className="text-gray-500">Aquí verás solo las reservaciones nuevas creadas en esta sesión.</p>
               </>
             )}
           </div>
         )}
       </div>
 
-      {/* Modal de nueva reservación */}
+      {/* Modal Nueva reservación */}
       {showReservationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-lg">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-semibold">Nueva reservación</h3>
-              <button
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                onClick={() => setShowReservationModal(false)}
-              >
+              <button className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100" onClick={() => { setShowReservationModal(false); }}>
                 <XIcon size={20} />
               </button>
             </div>
@@ -551,7 +571,6 @@ const ReservationsPage = () => {
               </div>
             </div>
 
-            {/* PIE DEL MODAL */}
             <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
               <button className={`${softBtn('gray')} inline-flex items-center whitespace-nowrap`} onClick={() => setShowReservationModal(false)}>
                 Cancelar

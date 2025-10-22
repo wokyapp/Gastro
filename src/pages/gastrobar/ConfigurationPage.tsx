@@ -106,11 +106,15 @@ const ConfigurationPage = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showViewUserModal, setShowViewUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
 
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'waiter' as AppUser['role'] });
-  const [passwordChange, setPasswordChange] = useState({ userId: 0, password: '', confirmPassword: '' });
+  // 👇🏼 Sin contraseñas en creación
+  const [newUser, setNewUser] = useState<{ name: string; email: string; role: AppUser['role'] }>({
+    name: '',
+    email: '',
+    role: 'waiter'
+  });
 
   // ======= Zones =======
   const [zones, setZones] = useState<ZoneItem[]>([]);
@@ -257,10 +261,7 @@ const ConfigurationPage = () => {
   // ===== Users Handlers =====
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newUser.password !== newUser.confirmPassword) {
-      showToast('error', 'Las contraseñas no coinciden');
-      return;
-    }
+    // 🔒 Sin contraseña en alta: sólo datos básicos
     setLoading(true);
     setTimeout(() => {
       const newUserId = (users.reduce((m,u)=>Math.max(m,u.id),0) || 0) + 1;
@@ -276,7 +277,7 @@ const ConfigurationPage = () => {
       persistUsers(next);
       setLoading(false);
       setShowAddUserModal(false);
-      setNewUser({ name: '', email: '', password: '', confirmPassword: '', role: 'waiter' });
+      setNewUser({ name: '', email: '', role: 'waiter' });
       showToast('success', 'Usuario creado correctamente');
     }, 600);
   };
@@ -288,23 +289,7 @@ const ConfigurationPage = () => {
     showToast('success', `Usuario ${target?.name} ${target?.active ? 'activado' : 'desactivado'} correctamente`);
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordChange.password !== passwordChange.confirmPassword) {
-      showToast('error', 'Las contraseñas no coinciden');
-      return;
-    }
-    // En este demo no persistimos contraseña
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setShowPasswordModal(false);
-      setPasswordChange({ userId: 0, password: '', confirmPassword: '' });
-      showToast('success', 'Contraseña actualizada correctamente');
-    }, 600);
-  };
-
-  // ===== Users helpers (UNA sola vez) =====
+  // ===== Users helpers =====
   const filteredUsers = users.filter(u =>
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -808,9 +793,10 @@ const ConfigurationPage = () => {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end space-x-2">
+                          {/* 👁️ Ver datos del usuario (no contraseña) */}
                           <button
-                            onClick={() => { setSelectedUser(u); setPasswordChange({ userId: u.id, password: '', confirmPassword: '' }); setShowPasswordModal(true); }}
-                            className="text-indigo-600 hover:text-indigo-900" title="Cambiar contraseña"
+                            onClick={() => { setSelectedUser(u); setShowViewUserModal(true); }}
+                            className="text-indigo-600 hover:text-indigo-900" title="Ver datos del usuario"
                           >
                             <EyeIcon size={16} />
                           </button>
@@ -1061,7 +1047,7 @@ const ConfigurationPage = () => {
 
       {/* ================= Modals ================= */}
 
-      {/* Add User Modal */}
+      {/* Add User Modal (sin contraseña) */}
       {showAddUserModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
           <div className="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
@@ -1092,7 +1078,7 @@ const ConfigurationPage = () => {
                   required
                 />
               </div>
-              <div className="mb-4">
+              <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
                 <select
                   value={newUser.role}
@@ -1106,26 +1092,7 @@ const ConfigurationPage = () => {
                   <option value="admin">Administrador</option>
                 </select>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                <input
-                  type="password"
-                  value={newUser.password}
-                  onChange={e => setNewUser({ ...newUser, password: e.target.value })}
-                  className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  required minLength={6}
-                />
-              </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña</label>
-                <input
-                  type="password"
-                  value={newUser.confirmPassword}
-                  onChange={e => setNewUser({ ...newUser, confirmPassword: e.target.value })}
-                  className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  required minLength={6}
-                />
-              </div>
+
               <div className="flex justify-end">
                 <button type="button" onClick={() => setShowAddUserModal(false)} className="mr-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                   Cancelar
@@ -1140,47 +1107,54 @@ const ConfigurationPage = () => {
         </div>
       )}
 
-      {/* Change Password Modal */}
-      {showPasswordModal && selectedUser && (
+      {/* View User Modal (solo datos, nunca contraseña) */}
+      {showViewUserModal && selectedUser && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
           <div className="relative mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium">Cambiar Contraseña: {selectedUser.name}</h3>
-              <button onClick={() => setShowPasswordModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar">
+              <h3 className="text-lg font-semibold">Datos del usuario</h3>
+              <button onClick={() => setShowViewUserModal(false)} className="text-gray-400 hover:text-gray-600" aria-label="Cerrar">
                 <XCircleIcon size={20} />
               </button>
             </div>
-            <form onSubmit={handleChangePassword}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
-                <input
-                  type="password"
-                  value={passwordChange.password}
-                  onChange={e => setPasswordChange({ ...passwordChange, password: e.target.value })}
-                  className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  required minLength={6}
-                />
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs text-gray-500">Nombre</p>
+                <p className="text-sm font-medium text-gray-900">{selectedUser.name}</p>
               </div>
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Nueva Contraseña</label>
-                <input
-                  type="password"
-                  value={passwordChange.confirmPassword}
-                  onChange={e => setPasswordChange({ ...passwordChange, confirmPassword: e.target.value })}
-                  className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  required minLength={6}
-                />
+              <div>
+                <p className="text-xs text-gray-500">Correo</p>
+                <p className="text-sm font-medium text-gray-900">{selectedUser.email}</p>
               </div>
-              <div className="flex justify-end">
-                <button type="button" onClick={() => setShowPasswordModal(false)} className="mr-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
-                  Cancelar
-                </button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700" disabled={loading}>
-                  {loading ? <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-1" /> : null}
-                  Actualizar Contraseña
-                </button>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500">Rol</p>
+                  <p className="text-sm font-medium text-gray-900">{getRoleName(selectedUser.role)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Estado</p>
+                  <p className={`text-sm font-medium ${selectedUser.active ? 'text-green-700' : 'text-red-700'}`}>
+                    {selectedUser.active ? 'Activo' : 'Inactivo'}
+                  </p>
+                </div>
               </div>
-            </form>
+              <div>
+                <p className="text-xs text-gray-500">Último ingreso</p>
+                <p className="text-sm font-medium text-gray-900">{formatDate(selectedUser.lastLogin)}</p>
+              </div>
+
+              {/* Nota: No mostramos ni editamos contraseña aquí */}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowViewUserModal(false)}
+                className="px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

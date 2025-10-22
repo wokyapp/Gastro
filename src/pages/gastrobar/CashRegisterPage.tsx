@@ -1,3 +1,4 @@
+// src/pages/CashRegisterPage.tsx
 import React, { useEffect, useRef, useState } from 'react'
 import {
   DollarSignIcon,
@@ -26,7 +27,9 @@ import QRCode from 'qrcode'
  *  - Limpia el runtime de la mesa en LS_RUNTIME
  *  - Emite StorageEvent para que Mesas se refresque
  *
- * Además, AHORA Caja solo muestra tickets cuya mesa fue marcada como "delivered" por Cocina.
+ * Además, Caja solo muestra tickets:
+ *   - MESAS: cuya mesa fue marcada como "delivered" por Cocina (vía runtime).
+ *   - LLEVAR: cuya orden en Cocina (LS_KITCHEN) está 'ready' (o 'delivered' si lo manejas).
  */
 
 // ===================== Claves LS =====================
@@ -34,6 +37,7 @@ const LS_CASH = 'woky.cash.tickets'
 const LS_BUSINESS = 'woky.business'
 const LS_TABLES = 'woky.tables'
 const LS_RUNTIME = 'woky.tables.runtime'
+const LS_KITCHEN = 'woky.kitchenOrders' // <= NUEVO: para detectar "para llevar" listas desde Cocina
 
 // ===================== Helpers =====================
 const fmtCO = (n:number) => new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(Math.round(n))
@@ -56,21 +60,20 @@ type TicketItem = {
   name:string;
   price:number;
   quantity:number;
-  // nuevo: número de tanda. 1 = orden inicial, 2..n = agregados
+  // número de tanda. 1 = orden inicial, 2..n = agregados
   batch?: number;
 }
 type Ticket = {
   id: string
-  table: number
+  table: number | string // número de mesa o 'Llevar'
   items: TicketItem[]
   status: 'active'|'paid'
   waiter: string
   customerName?: string
   created: string
-  // nuevos metadatos de agregados
-  batches?: number;        // cuántas tandas (1 = solo inicial)
-  updated?: string;        // última modificación (ISO)
-  lastAppendAt?: string;   // última vez que se agregaron productos (ISO)
+  batches?: number        // cuántas tandas (1 = solo inicial)
+  updated?: string        // última modificación (ISO)
+  lastAppendAt?: string   // última vez que se agregaron productos (ISO)
 }
 
 type BusinessSettings = {
@@ -118,7 +121,7 @@ type ReceiptPayment = {
 }
 type Receipt = {
   id: string
-  table: number
+  table: number | string
   items: TicketItem[]
   status: 'paid'
   waiter: string
@@ -136,6 +139,24 @@ type Receipt = {
   amount_received?: number
   change?: number
   efact?: Omit<ElectronicInvoiceData,'require'>
+}
+
+// ====== Tipos mínimos para leer Cocina/Config/Runtime local ======
+type ConfigTable = {
+  id: string|number
+  number: number
+  alias?: string
+  zone?: string
+  capacity?: number
+  active: boolean
+  status?: 'libre'|'ocupada'|'reservada'|'fuera_de_servicio'
+  waiter?: string|null
+}
+type Runtime = Record<string, any>
+type KitchenOrder = {
+  id: string
+  tableNumber: string
+  status: 'new'|'preparing'|'ready'|string // por si usas 'delivered'
 }
 
 // ===================== Componente =====================
@@ -171,7 +192,7 @@ const CashRegisterPage = () => {
     invoiceSeries: 'FE', invoiceSeparator: '-', invoicePadding: 6, nextInvoiceNumber: 1, defaultServicePct: 10
   })
 
-  // ====== LS helpers: Tickets / Tablas / Runtime ======
+  // ====== LS helpers: Tickets / Tablas / Runtime / Cocina ======
   const loadTickets = (): Ticket[] => {
     try {
       const raw = localStorage.getItem(LS_CASH)
@@ -183,29 +204,23 @@ const CashRegisterPage = () => {
     window.dispatchEvent(new StorageEvent('storage', { key: LS_CASH, newValue: JSON.stringify(list) }))
   }
 
-  type ConfigTable = {
-    id: string|number
-    number: number
-    alias?: string
-    zone?: string
-    capacity?: number
-    active: boolean
-    status?: 'libre'|'ocupada'|'reservada'|'fuera_de_servicio'
-    waiter?: string|null
-  }
   const loadTablesCfg = (): ConfigTable[] => {
     try {
       const raw = localStorage.getItem(LS_TABLES)
       return raw ? JSON.parse(raw) : []
     } catch { return [] }
   }
-
-  type Runtime = Record<string, any>
   const loadRuntime = (): Runtime => {
     try {
       const raw = localStorage.getItem(LS_RUNTIME)
       return raw ? JSON.parse(raw) : {}
     } catch { return {} }
+  }
+  const loadKitchen = (): KitchenOrder[] => {
+    try {
+      const raw = localStorage.getItem(LS_KITCHEN)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
   }
 
   /**
@@ -265,11 +280,14 @@ const CashRegisterPage = () => {
 
   const taxLabel = biz.taxType === 'impoconsumo' ? 'Impoconsumo' : 'IVA'
 
-  // === NUEVO: función que calcula qué tickets mostrar (solo "delivered")
+  // === NUEVO: función que calcula qué tickets mostrar
+  // MESAS: mostrar solo si runtime.kitchenStatus === 'delivered'
+  // LLEVAR: mostrar si KitchenOrder.status === 'ready' (o 'delivered' si lo utilizas)
   const computeDeliveredTickets = (): Ticket[] => {
     const tickets = loadTickets().filter(t => t.status === 'active')
     const cfg = loadTablesCfg()
     const rt = loadRuntime()
+    const kitchen = loadKitchen()
 
     // Mapeo por número de mesa -> id (clave de runtime)
     const tableIdByNumber = new Map<number,string>()
@@ -278,7 +296,17 @@ const CashRegisterPage = () => {
     }
 
     return tickets.filter(t => {
-      const key = tableIdByNumber.get(Number(t.table))
+      const isTakeAway =
+        String(t.table).toLowerCase() === 'llevar' ||
+        String(t.table).toLowerCase() === 'para llevar'
+      if (isTakeAway) {
+        const ko = kitchen.find(k => k.id === t.id)
+        return !!ko && (ko.status === 'ready' || ko.status === 'delivered')
+      }
+
+      const num = Number(t.table)
+      if (Number.isNaN(num)) return false
+      const key = tableIdByNumber.get(num)
       if (!key) return false
       const r = rt[key]
       return r && r.kitchenStatus === 'delivered'
@@ -291,7 +319,8 @@ const CashRegisterPage = () => {
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return
-      if (e.key === LS_CASH || e.key === LS_RUNTIME || e.key === LS_TABLES) {
+      // Agregamos LS_KITCHEN para refrescar cuando Cocina cambia estados de LLEVAR
+      if (e.key === LS_CASH || e.key === LS_RUNTIME || e.key === LS_TABLES || e.key === LS_KITCHEN) {
         refresh()
       }
     }
@@ -437,11 +466,15 @@ const CashRegisterPage = () => {
     setShowQr(false)
     setQrDataUrl('')
 
-    // Cerrar la cuenta en LS (paid) y liberar mesa
+    // Cerrar la cuenta en LS (paid) y liberar mesa si aplica
     const list = loadTickets()
     const upd = list.map(t => t.id === selectedTicket.id ? { ...t, status: 'paid' } : t)
     saveTickets(upd)
-    freeTableByNumber(selectedTicket.table)
+
+    // Liberar mesa solo si NO es llevar
+    if (typeof selectedTicket.table === 'number') {
+      freeTableByNumber(selectedTicket.table)
+    }
 
     setActiveTickets(computeDeliveredTickets())
     setSelectedTicket(null)
@@ -491,11 +524,15 @@ const CashRegisterPage = () => {
     setShowQr(false)
     setQrDataUrl('')
 
-    // Cerrar en LS y liberar mesa (habilitar)
+    // Cerrar en LS
     const list = loadTickets()
     const upd = list.map(t => t.id === ticket.id ? { ...t, status: 'paid' } : t)
     saveTickets(upd)
-    freeTableByNumber(ticket.table)
+
+    // Liberar MESAS; para LLEVAR no hay mesa que liberar
+    if (typeof ticket.table === 'number') {
+      freeTableByNumber(ticket.table)
+    }
 
     setActiveTickets(computeDeliveredTickets())
   }
@@ -624,7 +661,7 @@ const CashRegisterPage = () => {
     <div className="w-full bg-white">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Caja Registradora</h1>
-        <p className="text-gray-600 mt-1">Gestión de pagos (solo cuentas entregadas)</p>
+        <p className="text-gray-600 mt-1">Gestión de pagos (mesas entregadas y pedidos para llevar listos)</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -632,7 +669,7 @@ const CashRegisterPage = () => {
         <div className="lg:col-span-2">
           <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
             <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-medium text-gray-800">Cuentas Entregadas (pendientes de pago)</h2>
+              <h2 className="text-lg font-medium text-gray-800">Cuentas/Pedidos pendientes de pago</h2>
             </div>
             <div className="p-4">
               <div className="flex mb-4">
@@ -658,6 +695,9 @@ const CashRegisterPage = () => {
 
                     const batches = (ticket as any).batches || 1
                     const wasUpdated = batches > 1
+                    const isTakeAway =
+                      String(ticket.table).toLowerCase() === 'llevar' ||
+                      String(ticket.table).toLowerCase() === 'para llevar'
 
                     return (
                       <div
@@ -681,7 +721,7 @@ const CashRegisterPage = () => {
                             <div className="ml-3 min-w-0">
                               <div className="flex items-center gap-2">
                                 <h3 className="font-medium text-gray-900 truncate">
-                                  Cuenta #{ticket.id}
+                                  {isTakeAway ? 'Llevar' : 'Mesa'} • Ticket #{ticket.id}
                                 </h3>
                                 {wasUpdated && (
                                   <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
@@ -690,7 +730,7 @@ const CashRegisterPage = () => {
                                 )}
                               </div>
                               <p className="text-sm text-gray-500 truncate">
-                                Mesa {ticket.table} • Mesero: {ticket.waiter}
+                                {isTakeAway ? 'Para llevar' : `Mesa ${ticket.table}`} • Mesero: {ticket.waiter}
                               </p>
                             </div>
                           </div>
@@ -717,7 +757,7 @@ const CashRegisterPage = () => {
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <ReceiptIcon size={48} className="mx-auto mb-3 text-gray-300" />
-                  <p>No hay cuentas entregadas pendientes</p>
+                  <p>No hay cuentas/pedidos pendientes</p>
                 </div>
               )}
             </div>
@@ -752,7 +792,7 @@ const CashRegisterPage = () => {
                   <p className="text-sm text-gray-500 mb-1">Cuenta seleccionada</p>
                   <div className="flex justify-between items-center">
                     <p className="font-medium">
-                      {selectedTicket.id} - Mesa {selectedTicket.table}
+                      {String(selectedTicket.table).toLowerCase() === 'llevar' ? 'Llevar' : `Mesa ${selectedTicket.table}`} — #{selectedTicket.id}
                     </p>
                     <button
                       onClick={() => setSelectedTicket(null)}
@@ -1344,7 +1384,7 @@ const CashRegisterPage = () => {
               <div className="p-4 text-center">
                 <div className="py-8">
                   <ReceiptIcon size={48} className="mx-auto mb-3 text-gray-300" />
-                  <p className="text-gray-500">Selecciona una cuenta (ya entregada) para procesar el pago</p>
+                  <p className="text-gray-500">Selecciona una cuenta o pedido (ya listo/entregado) para procesar el pago</p>
                 </div>
               </div>
             )}
@@ -1395,8 +1435,8 @@ const CashRegisterPage = () => {
                 <span className="text-right font-medium">{lastReceipt.invoice_number}</span>
                 <span className="text-gray-600">Ticket interno:</span>
                 <span className="text-right">{lastReceipt.id}</span>
-                <span className="text-gray-600">Mesa:</span>
-                <span className="text-right">{lastReceipt.table}</span>
+                <span className="text-gray-600">Mesa/Pedido:</span>
+                <span className="text-right">{String(lastReceipt.table).toLowerCase()==='llevar'?'Llevar':lastReceipt.table}</span>
                 <span className="text-gray-600">Mesero:</span>
                 <span className="text-right">{lastReceipt.waiter}</span>
                 <span className="text-gray-600">Fecha:</span>
@@ -1409,7 +1449,7 @@ const CashRegisterPage = () => {
 
               <div className="text-sm">
                 {lastReceipt.items.map((it) => (
-                  <div key={it.id} className="grid grid-cols-5 gap-1 mb-1">
+                  <div key={`${it.batch||1}-${it.id}`} className="grid grid-cols-5 gap-1 mb-1">
                     <div className="col-span-3">{it.quantity}x {it.name}</div>
                     <div className="col-span-2 text-right">${fmtCO(it.price * it.quantity)}</div>
                   </div>

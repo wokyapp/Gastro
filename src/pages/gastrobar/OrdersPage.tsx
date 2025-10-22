@@ -1,3 +1,4 @@
+// src/pages/OrdersPage.tsx
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -29,7 +30,7 @@ type Status = 'available' | 'occupied' | 'reserved' | 'disabled';
 type ConfigStatus = 'libre' | 'ocupada' | 'reservada' | 'fuera_de_servicio';
 
 type ConfigTable = {
-  id: string;
+  id: string | number;
   number: number;
   alias?: string;
   zone?: string;
@@ -68,7 +69,7 @@ interface Order {
   status: OrderStatus;
   createdAt: Date;
   updatedAt: Date;
-  waiter?: any;
+  waiter?: Waiter;
 }
 
 interface Table {
@@ -168,10 +169,14 @@ const OrdersPage: React.FC = () => {
   const [selectedType, setSelectedType] = useState('all');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [existingOrder, setExistingOrder] = useState<Order | null>(null);
+
   const [selectedWaiter, setSelectedWaiter] = useState<Waiter | null>(null);
   const [allCategoriesExpanded, setAllCategoriesExpanded] = useState(true);
+
+  // Header bloqueable solo para el nombre del cliente
   const [lockHeaderInfo, setLockHeaderInfo] = useState(false);
 
+  // Mostrar histórico entregado cuando corresponda
   const [deliveredItems, setDeliveredItems] = useState<{ name: string; quantity: number; price: number }[]>([]);
   const [deliveredMeta, setDeliveredMeta] = useState<{ itemsCount: number; total: number } | null>(null);
 
@@ -303,20 +308,16 @@ const OrdersPage: React.FC = () => {
 
   // === Cancelar orden de cocina actual y liberar mesa ===
   const cancelKitchenOrderAndFreeTable = (table: Table, kitchenOrderId: string) => {
-    // 1) Borrar orden de cocina
     const list = loadKitchen().filter(o => o.id !== kitchenOrderId);
     saveKitchen(list);
 
-    // 2) Limpiar runtime completamente (liberar mesa + sin historial activo)
     const rt = getRuntime();
     const key = String(table.id);
     delete rt[key];
     setRuntime(rt);
 
-    // 3) Mesa a LIBRE
     setConfigTableStatus(table.id, 'libre');
 
-    // 4) Feedback
     showToast('success', `Orden cancelada y ${table.name} liberada`);
   };
 
@@ -356,10 +357,14 @@ const OrdersPage: React.FC = () => {
             showToast('error', `${table.name} no está disponible`);
           } else {
             setSelectedTable(table);
+
+            if (table.waiter?.name && !selectedWaiter) {
+              const match = waiters.find(w => w.name === table.waiter!.name) || null;
+              setSelectedWaiter(match ?? { id: 100000 + Math.floor(Math.random()*9999), name: table.waiter!.name, active: true });
+            }
           }
         }
 
-        // ===== Precarga desde RUNTIME (cliente/mesero/entregado + lock) =====
         try {
           const raw = localStorage.getItem(LS_RUNTIME);
           if (raw) {
@@ -371,7 +376,6 @@ const OrdersPage: React.FC = () => {
                 const match = waiters.find((w) => w.name === rec.waiter) || null;
                 setSelectedWaiter(match ?? { id: 9999, name: rec.waiter, active: true });
               }
-              if (rec.customerName || rec.waiter) setLockHeaderInfo(true);
 
               if (rec.items && rec.items.length > 0) {
                 setDeliveredItems(rec.items.map((x) => ({ name: x.name, quantity: x.quantity, price: x.price })));
@@ -384,14 +388,13 @@ const OrdersPage: React.FC = () => {
               const kst = rec.kitchenStatus;
               const locked = kst === 'ready';
               setIsEditLocked(!!locked);
-              if (locked) setLockHeaderInfo(true);
+              setLockHeaderInfo(!!locked);
             }
           }
         } catch {
           /* ignore */
         }
 
-        // ===== Precarga desde KITCHEN (orden editable si está "new" o "preparing") =====
         try {
           const list = loadKitchen();
           const editable = list.find(
@@ -399,7 +402,6 @@ const OrdersPage: React.FC = () => {
           );
           if (editable) {
             setCurrentKitchenOrderId(editable.id);
-            // Mapear items de cocina -> seleccionados (para editar)
             const toSelected = editable.items.map((it) => {
               const ref = mockMenu.find((m) => String(m.id) === String(it.id));
               return {
@@ -464,7 +466,7 @@ const OrdersPage: React.FC = () => {
     return () => window.removeEventListener('storage', onStorage);
   }, [loadConfigTables, selectedTable]);
 
-  // Escucha específica de runtime: bloquear solo si cambia a "ready"; desbloquear si pasa a "delivered"
+  // Escucha específica de runtime
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === LS_RUNTIME && selectedTable) {
@@ -482,6 +484,13 @@ const OrdersPage: React.FC = () => {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [selectedTable]);
+
+  // Al cambiar el tipo, limpiar/ajustar cosas necesarias
+  useEffect(() => {
+    if (orderType === 'llevar') {
+      setSelectedTable(null);
+    }
+  }, [orderType]);
 
   const availableTablesForSelection = useMemo(() => {
     const list = availableTables.filter((t) => t.status === 'available');
@@ -576,6 +585,12 @@ const OrdersPage: React.FC = () => {
       return;
     }
     setSelectedTable(table);
+
+    // Autoselección de mesero por defecto si la mesa lo tiene
+    if (table.waiter?.name && !selectedWaiter) {
+      const match = waiters.find(w => w.name === table.waiter!.name) || null;
+      setSelectedWaiter(match ?? { id: 100000 + Math.floor(Math.random()*9999), name: table.waiter!.name, active: true });
+    }
   };
 
   // Cocina: persistir NUEVA
@@ -618,8 +633,9 @@ const OrdersPage: React.FC = () => {
       showToast('error', 'Selecciona el mesero responsable');
       return;
     }
-    if (orderType === 'mesa' && !customerName.trim()) {
-      showToast('error', 'Ingresa el nombre del cliente para la mesa');
+    // Requerimos nombre del cliente para ambos tipos (mesa y llevar)
+    if (!customerName.trim()) {
+      showToast('error', 'Ingresa el nombre del cliente');
       return;
     }
 
@@ -647,11 +663,9 @@ const OrdersPage: React.FC = () => {
           ...list[idx],
           items: nextItems,
           waiter: selectedWaiter?.name || list[idx].waiter,
-          // status se conserva (new | preparing)
         };
         saveKitchen(list);
 
-        // runtime: mantener estado y datos básicos
         const rt = getRuntime();
         const key = String(selectedTable.id);
         const prev = rt[key] || { tableId: selectedTable.id };
@@ -681,8 +695,8 @@ const OrdersPage: React.FC = () => {
       newOrder.tableId = selectedTable.id;
       newOrder.tableName = selectedTable.name;
     } else {
-      newOrder.customerPhone = customerPhone;
-      newOrder.pickupTime = pickupTime;
+      newOrder.customerPhone = customerPhone.trim() || undefined;
+      newOrder.pickupTime = pickupTime.trim() || undefined;
     }
 
     const defaultPrep = (it: MenuItem) => {
@@ -767,22 +781,48 @@ const OrdersPage: React.FC = () => {
   return (
     <div className="p-4">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-xl mb-3 shadow-md flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">
-            {currentKitchenOrderId ? 'Editar Orden (Cocina)' : existingOrder ? 'Editar Orden' : 'Nueva Orden / Agregar a Mesa'}
-          </h1>
-          {currentKitchenOrderId && (
-            <p className="text-sm text-blue-100 mt-1">Estás editando la orden en cocina (estado: Orden/Preparación).</p>
-          )}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-xl mb-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">
+              {currentKitchenOrderId
+                ? 'Editar Orden (Cocina)'
+                : existingOrder
+                ? 'Editar Orden'
+                : orderType === 'mesa'
+                ? 'Nueva Orden (Mesa)'
+                : 'Nueva Orden (Para llevar)'}
+            </h1>
+            {currentKitchenOrderId && (
+              <p className="text-sm text-blue-100 mt-1">Estás editando la orden en cocina (estado: Orden/Preparación).</p>
+            )}
+          </div>
+          <div className="flex space-x-2">
+            <button
+              className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-400 flex items-center"
+              onClick={() => navigate('/cocina')}
+            >
+              <UtensilsIcon size={16} className="mr-1" />
+              Ir a Cocina
+            </button>
+          </div>
         </div>
-        <div className="flex space-x-2">
+
+        {/* Selector tipo de orden */}
+        <div className="mt-3 inline-flex rounded-lg overflow-hidden border border-white/30">
           <button
-            className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-400 flex items-center"
-            onClick={() => navigate('/cocina')}
+            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'mesa' ? 'bg-white text-blue-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            onClick={() => setOrderType('mesa')}
+            disabled={isEditLocked}
           >
-            <UtensilsIcon size={16} className="mr-1" />
-            Ir a Cocina
+            Mesa
+          </button>
+          <button
+            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'llevar' ? 'bg-white text-blue-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            onClick={() => setOrderType('llevar')}
+            disabled={isEditLocked}
+          >
+            Para llevar
           </button>
         </div>
       </div>
@@ -842,13 +882,46 @@ const OrdersPage: React.FC = () => {
                 />
               </div>
 
+              {/* Campos extra para 'Para llevar' */}
+              {orderType === 'llevar' && (
+                <div className="grid grid-cols-1 gap-3 mt-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="customerPhone">
+                      Teléfono de contacto
+                    </label>
+                    <input
+                      id="customerPhone"
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="3001234567"
+                      disabled={isEditLocked}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="pickupTime">
+                      Hora de recogida
+                    </label>
+                    <input
+                      id="pickupTime"
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      disabled={isEditLocked}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Mesero (desde Configuración) */}
               <div className="mt-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="waiterSelect">
                     Mesero Asignado
                   </label>
-                  <span className="text-[11px] text-gray-500">{lockHeaderInfo || isEditLocked ? 'Bloqueado' : 'Editable'}</span>
+                  <span className="text-[11px] text-gray-500">{isEditLocked ? 'Bloqueado (LISTA en cocina)' : 'Editable'}</span>
                 </div>
                 <select
                   id="waiterSelect"
@@ -859,7 +932,7 @@ const OrdersPage: React.FC = () => {
                     const waiter = waiters.find((w) => w.id === waiterId) || null;
                     setSelectedWaiter(waiter);
                   }}
-                  disabled={lockHeaderInfo || isEditLocked}
+                  disabled={isEditLocked}
                 >
                   <option value="">-- Seleccionar mesero --</option>
                   {waiters
@@ -875,7 +948,7 @@ const OrdersPage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Mesa */}
+              {/* Mesa: solo si tipo = mesa */}
               {orderType === 'mesa' ? (
                 <div className="mt-4">
                   {selectedTable ? (
@@ -1023,7 +1096,7 @@ const OrdersPage: React.FC = () => {
                   onClick={handleSubmitOrder}
                   disabled={
                     isEditLocked ||
-                    (selectedItems.length === 0 && !currentKitchenOrderId) || // permitir 0 ítems solo si es edición (para cancelar)
+                    (selectedItems.length === 0 && !currentKitchenOrderId) ||
                     (orderType === 'mesa' && !selectedTable) ||
                     !selectedWaiter ||
                     !customerName.trim()
