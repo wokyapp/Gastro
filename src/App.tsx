@@ -6,7 +6,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { CashRegisterProvider } from './contexts/CashRegisterContext';
 
 import LoginPage from './pages/LoginPage';
-import GastrobarLayout from './components/GastrobarLayout'; // <-- ruta corregida
+import GastrobarLayout from './components/GastrobarLayout';
 import TablesPage from './pages/gastrobar/TablesPage';
 import OrdersPage from './pages/gastrobar/OrdersPage';
 import MenuPage from './pages/gastrobar/MenuPage';
@@ -25,6 +25,11 @@ const ProtectedRoute = ({
   requiredRoles = []
 }) => {
   const { user, isAuthenticated, isLoading } = useAuth();
+
+  // ✅ Siempre que aterricen en "/", mandar a /login (aun si hay sesión)
+  if (window.location.pathname === '/') {
+    return <Navigate to="/login" replace />;
+  }
 
   // Indicador de carga mientras se verifica la autenticación
   if (isLoading) {
@@ -45,8 +50,8 @@ const ProtectedRoute = ({
     return <Navigate to="/ordenes" replace />;
   }
 
-  // Derivación por rol cuando entra a "/" o "/dashboard"
-  if (window.location.pathname === '/dashboard' || window.location.pathname === '/') {
+  // Derivación por rol cuando entra a "/dashboard"
+  if (window.location.pathname === '/dashboard') {
     // Cocinero → cocina
     if (user.role === 'cook' || user.role === 'cocinero') {
       return <Navigate to="/cocina" replace />;
@@ -59,7 +64,7 @@ const ProtectedRoute = ({
     if (user.role === 'waiter' || user.role === 'mesero') {
       return <Navigate to="/ordenes" replace />;
     }
-    // Admin → órdenes (antes iba a /metricas)
+    // Admin → órdenes (solicitado)
     if (user.role === 'admin') {
       return <Navigate to="/ordenes" replace />;
     }
@@ -77,7 +82,7 @@ export function App() {
             <CashRegisterProvider>
               <Router>
                 <Routes>
-                  {/* Página inicial pública */}
+                  {/* ===== Página inicial pública */}
                   <Route path="/login" element={<LoginPage />} />
 
                   {/* App protegida */}
@@ -89,12 +94,13 @@ export function App() {
                       </ProtectedRoute>
                     }
                   >
-                    {/* No redirigimos el index a /dashboard; deja que ProtectedRoute derive por rol */}
+                    {/* No forzamos index → /dashboard.
+                        "/" ya se redirige a /login dentro de ProtectedRoute */}
                     {/* <Route index element={<Navigate to="/dashboard" replace />} /> */}
 
                     {/* Rutas internas */}
                     <Route path="dashboard" element={<DashboardPage />} />
-                    {/* Métricas: oculta en el layout, accesible solo para admin si entra directo */}
+                    {/* Métricas: oculta en el layout; accesible solo a admin si navega directo */}
                     <Route
                       path="metricas"
                       element={
