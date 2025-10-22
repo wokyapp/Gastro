@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboardIcon,
   UsersIcon,
-  SettingsIcon,
   LogOutIcon,
   BellIcon,
   UtensilsIcon,
@@ -11,13 +9,29 @@ import {
   BookOpenIcon,
   CalendarIcon,
   DollarSignIcon,
-  TrendingUpIcon,
   ChefHatIcon,
   WrenchIcon,
   MoreHorizontalIcon
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+
+type NavItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ size?: number; className?: string; 'aria-hidden'?: boolean }>;
+  roles: string[];
+};
+
+type NotificationItem = {
+  id: string | number;
+  title: string;
+  message: string;
+  time: string;   // etiqueta legible (ej. "10:15" o "ahora")
+  read: boolean;
+};
+
+const LS_GLOBAL_NOTIFS = 'woky.notifications'; // canal global de notificaciones (escrito por Cocina)
 
 const GastrobarLayout = () => {
   const location = useLocation();
@@ -30,15 +44,13 @@ const GastrobarLayout = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: 'Stock bajo', message: '3 productos con stock bajo', time: '10 min', read: false },
-    { id: 2, title: 'Nuevo pedido', message: 'Mesa 5 - Orden #1234', time: '15 min', read: false },
-    { id: 3, title: 'Reservación confirmada', message: 'Reserva para 4 personas - 8:00 PM', time: '2 horas', read: true }
-  ]);
+  // Solo notificaciones provenientes de Cocina: "Orden lista"
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  // Guardamos el último id procesado para evitar duplicados innecesarios
+  const seenIds = useRef<Set<string | number>>(new Set());
 
   // ===== Redirecciones de inicio de sesión / página inicial =====
-  // 1) Si la URL es raíz "/", llevar a /login.
-  // 2) Si ya hay sesión y se visita /login, llevar a la vista principal (Mesas por defecto).
   useEffect(() => {
     if (location.pathname === '/') {
       navigate('/login', { replace: true });
@@ -54,6 +66,92 @@ const GastrobarLayout = () => {
     return <Outlet />;
   }
 
+  // ==== Utilidades ====
+  const fmtTime = (iso?: string) => {
+    try {
+      if (!iso) return 'ahora';
+      const d = new Date(iso);
+      return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'ahora';
+    }
+  };
+
+  // Filtro estricto: solo eventos de Cocina "Orden lista"
+  const isKitchenReady = (n: { title?: string; message?: string }) =>
+    (n.title || '').toLowerCase().trim() === 'orden lista';
+
+  const loadGlobalNotifs = (): NotificationItem[] => {
+    try {
+      const raw = localStorage.getItem(LS_GLOBAL_NOTIFS);
+      const arr: Array<{ id: string | number; title: string; message: string; ts?: string; read?: boolean }> = raw ? JSON.parse(raw) : [];
+      return arr
+        .filter(isKitchenReady)
+        .map(n => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          time: fmtTime(n.ts),
+          read: Boolean(n.read ?? false),
+        }));
+    } catch {
+      return [];
+    }
+  };
+
+  // Merge inteligente (sin duplicados)
+  const mergeNotifs = (base: NotificationItem[], incoming: NotificationItem[]) => {
+    const map = new Map<string | number, NotificationItem>();
+    for (const n of base) map.set(n.id, n);
+    for (const n of incoming) map.set(n.id, n);
+    return Array.from(map.values())
+      .sort((a, b) => String(b.time).localeCompare(String(a.time))); // aproximación de orden
+  };
+
+  // Al montar, cargamos solo notificaciones de cocina "Orden lista"
+  useEffect(() => {
+    const globals = loadGlobalNotifs();
+    if (globals.length) {
+      const merged = mergeNotifs([], globals);
+      setNotifications(merged);
+      for (const n of merged) seenIds.current.add(n.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listener de canal global (cualquier rol recibe notificaciones de Cocina)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LS_GLOBAL_NOTIFS || !e.newValue) return;
+      try {
+        const arr = JSON.parse(e.newValue) as Array<{ id: string | number; title: string; message: string; ts?: string; read?: boolean }>;
+        if (!Array.isArray(arr) || arr.length === 0) return;
+
+        // Tomamos el último elemento como "nuevo" (push/unshift en Cocina)
+        const last = arr[0];
+        if (!last || !isKitchenReady(last)) return; // ignorar todo lo que no sea "Orden lista"
+
+        if (!seenIds.current.has(last.id)) {
+          const next: NotificationItem = {
+            id: last.id,
+            title: last.title,
+            message: last.message,
+            time: fmtTime(last.ts),
+            read: Boolean(last.read ?? false)
+          };
+          setNotifications(prev => [next, ...prev]);
+          seenIds.current.add(last.id);
+          // Toast opcional
+          showToast('info', next.title + ': ' + next.message);
+        }
+      } catch {
+        /* noop */
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [showToast]);
+
   // ==== Sesión ====
   const handleLogout = () => {
     logout();
@@ -62,28 +160,37 @@ const GastrobarLayout = () => {
   };
 
   // ==== Notificaciones ====
-  const markAsRead = (id: number) => {
-    setNotifications(notifications.map(n => (n.id === id ? { ...n, read: true } : n)));
+  const markAsRead = (id: number | string) => {
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    // reflejar lectura en LS para persistencia entre pestañas
+    try {
+      const raw = localStorage.getItem(LS_GLOBAL_NOTIFS);
+      const arr: any[] = raw ? JSON.parse(raw) : [];
+      const idx = arr.findIndex(x => x.id === id);
+      if (idx >= 0) {
+        arr[idx].read = true;
+        localStorage.setItem(LS_GLOBAL_NOTIFS, JSON.stringify(arr));
+        window.dispatchEvent(new StorageEvent('storage', { key: LS_GLOBAL_NOTIFS, newValue: JSON.stringify(arr) }));
+      }
+    } catch { /* noop */ }
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      const raw = localStorage.getItem(LS_GLOBAL_NOTIFS);
+      const arr: any[] = raw ? JSON.parse(raw) : [];
+      const next = arr
+        .filter(isKitchenReady)         // mantenemos solo eventos de cocina
+        .map(n => ({ ...n, read: true }));
+      localStorage.setItem(LS_GLOBAL_NOTIFS, JSON.stringify(next));
+      window.dispatchEvent(new StorageEvent('storage', { key: LS_GLOBAL_NOTIFS, newValue: JSON.stringify(next) }));
+    } catch { /* noop */ }
   };
 
   // ==== Navegación (filtrada por rol) ====
-  const getNavigation = () => {
-    const baseNavigation = [
-      // 🔒 Ocultos de momento, se mantienen comentados para referencia.
-      /*
-      {
-        name: 'Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboardIcon,
-        roles: ['admin']
-      },
-      {
-        name: 'Métricas',
-        href: '/metricas',
-        icon: TrendingUpIcon,
-        roles: ['admin']
-      },
-      */
+  const getNavigation = (): NavItem[] => {
+    const baseNavigation: NavItem[] = [
       {
         name: 'Mesas',
         href: '/mesas',
@@ -128,7 +235,7 @@ const GastrobarLayout = () => {
       }
     ];
 
-    return baseNavigation.filter(item => item.roles.includes(user?.role) || user?.role === 'admin');
+    return baseNavigation.filter(item => item.roles.includes(user?.role as string) || user?.role === 'admin');
   };
 
   const navigation = getNavigation();
@@ -136,7 +243,7 @@ const GastrobarLayout = () => {
   // ==== Activo ====
   const isActive = (href: string) => location.pathname === href;
 
-  // ==== Utilidades de botones ====
+  // ==== Utilidades de botones (expuestas a páginas hijas) ====
   const softBtn = (color: string) => {
     const baseClasses = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200';
     const colorClasses: Record<string, string> = {
@@ -154,19 +261,15 @@ const GastrobarLayout = () => {
   };
 
   // ==== Helpers para items específicos ====
-  const findItem = (name: string) => navigation.find(n => n.name === name);
+  const byName = (name: string) => navigation.find(n => n.name === name);
 
-  // Ítems principales visibles en la barra inferior (orden solicitado)
-  const primaryNames = ['Mesas', 'Órdenes', 'Caja', 'Cocina'] as const;
-  const primaryItems = primaryNames
-    .map(n => findItem(n))
-    .filter(Boolean) as Array<NonNullable<ReturnType<typeof findItem>>>;
+  const primaryItems: NavItem[] = (['Mesas', 'Órdenes', 'Caja', 'Cocina'] as const)
+    .map(byName)
+    .filter((x): x is NavItem => Boolean(x));
 
-  // Ítems que van en el menú de 3 puntos
-  const overflowNames = ['Reservas', 'Menú', 'Ajustes'] as const;
-  const overflowItems = overflowNames
-    .map(n => findItem(n))
-    .filter(Boolean) as Array<NonNullable<ReturnType<typeof findItem>>>;
+  const overflowItems: NavItem[] = (['Reservas', 'Menú', 'Ajustes'] as const)
+    .map(byName)
+    .filter((x): x is NavItem => Boolean(x));
 
   // Cerrar overlays al cambiar de ruta
   useEffect(() => {
@@ -182,7 +285,7 @@ const GastrobarLayout = () => {
         <div className="flex items-center justify-between h-16 px-4">
           <div className="flex items-center">
             <div className="bg-blue-600 text-white p-1.5 rounded">
-              <UtensilsIcon size={20} aria-hidden="true" />
+              <UtensilsIcon size={20} aria-hidden />
             </div>
             <span className="text-lg font-bold text-blue-800 ml-2">Woky | Gastro</span>
           </div>
@@ -200,7 +303,7 @@ const GastrobarLayout = () => {
                   setIsProfileOpen(false);
                 }}
               >
-                <BellIcon size={20} aria-hidden="true" />
+                <BellIcon size={20} aria-hidden />
                 {notifications.some(n => !n.read) && (
                   <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
                 )}
@@ -219,9 +322,7 @@ const GastrobarLayout = () => {
                       notifications.map(notification => (
                         <div
                           key={notification.id}
-                          className={`px-4 py-3 hover:bg-gray-50 ${
-                            !notification.read ? 'bg-blue-50' : ''
-                          }`}
+                          className={`px-4 py-3 hover:bg-gray-50 ${!notification.read ? 'bg-blue-50' : ''}`}
                           onClick={() => markAsRead(notification.id)}
                           role="menuitem"
                           tabIndex={0}
@@ -240,7 +341,10 @@ const GastrobarLayout = () => {
                     )}
                   </div>
                   <div className="px-4 py-2 border-t border-gray-200">
-                    <button className="text-xs text-blue-600 hover:text-blue-800">
+                    <button
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                      onClick={markAllAsRead}
+                    >
                       Marcar todas como leídas
                     </button>
                   </div>
@@ -260,7 +364,7 @@ const GastrobarLayout = () => {
                 aria-expanded={isProfileOpen}
               >
                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <UsersIcon size={16} className="text-blue-600" aria-hidden="true" />
+                  <UsersIcon size={16} className="text-blue-600" aria-hidden />
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium">{user?.name?.replace(' Demo', '') || 'Usuario'}</p>
@@ -285,24 +389,14 @@ const GastrobarLayout = () => {
                   role="menu"
                   className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-10 border border-gray-200"
                 >
-                  <Link
-                    to="/ajustes"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setIsProfileOpen(false)}
-                    role="menuitem"
-                  >
-                    <div className="flex items-center">
-                      <SettingsIcon size={16} className="mr-2" aria-hidden="true" />
-                      Ajustes
-                    </div>
-                  </Link>
+                  {/* Eliminada la opción "Ajustes" del menú de perfil */}
                   <button
                     onClick={handleLogout}
                     className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     role="menuitem"
                   >
                     <div className="flex items-center">
-                      <LogOutIcon size={16} className="mr-2" aria-hidden="true" />
+                      <LogOutIcon size={16} className="mr-2" aria-hidden />
                       Cerrar sesión
                     </div>
                   </button>
@@ -330,26 +424,27 @@ const GastrobarLayout = () => {
         <div className="flex items-center justify-between h-16">
           <div className="relative flex w-full justify-between px-1">
             {/* Ítems principales en orden: Mesas, Órdenes, Caja, Cocina */}
-            {primaryItems.map(item => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={`flex flex-col items-center justify-center h-full focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                  isActive(item.href)
-                    ? 'text-blue-600 bg-blue-50 border-t-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-                style={{ flex: '1 1 0', minWidth: '60px', maxWidth: '80px' }}
-                aria-current={isActive(item.href) ? 'page' : undefined}
-              >
-                <div className={`p-1 rounded-full ${isActive(item.href) ? 'bg-blue-100' : ''}`}>
-                  <item.icon size={18} aria-hidden="true" />
-                </div>
-                <span className="text-xs mt-1 font-medium truncate w-full text-center px-1">
-                  {item.name}
-                </span>
-              </Link>
-            ))}
+            {primaryItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={`flex flex-col items-center justify-center h-full focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isActive(item.href)
+                      ? 'text-blue-600 bg-blue-50 border-t-2 border-blue-600'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                  style={{ flex: '1 1 0', minWidth: '60px', maxWidth: '80px' }}
+                  aria-current={isActive(item.href) ? 'page' : undefined}
+                >
+                  <div className={`p-1 rounded-full ${isActive(item.href) ? 'bg-blue-100' : ''}`}>
+                    <Icon size={18} aria-hidden />
+                  </div>
+                  <span className="text-xs mt-1 font-medium truncate w-full text-center px-1">{item.name}</span>
+                </Link>
+              );
+            })}
 
             {/* Botón de 3 puntos (overflow) */}
             <div className="relative" style={{ flex: '0 0 60px' }}>
@@ -363,7 +458,7 @@ const GastrobarLayout = () => {
                 onClick={() => setIsOverflowOpen(prev => !prev)}
               >
                 <div className="p-1 rounded-full">
-                  <MoreHorizontalIcon size={18} aria-hidden="true" />
+                  <MoreHorizontalIcon size={18} aria-hidden />
                 </div>
                 <span className="text-xs mt-1 font-medium">Más</span>
               </button>
@@ -374,19 +469,21 @@ const GastrobarLayout = () => {
                   role="menu"
                   className="absolute bottom-16 right-1 min-w-[12rem] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20"
                 >
-                  {overflowItems.map(ov => (
-                    <Link
-                      key={ov.name}
-                      to={ov.href}
-                      onClick={() => setIsOverflowOpen(false)}
-                      className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
-                      role="menuitem"
-                    >
-                      <ov.icon size={16} className="mr-2" aria-hidden="true" />
-                      <span>{ov.name}</span>
-                    </Link>
-                  ))}
-                  {/* Nota: Dashboard y Métricas permanecen ocultos; se dejan comentados en la definición. */}
+                  {overflowItems.map(ov => {
+                    const OvIcon = ov.icon;
+                    return (
+                      <Link
+                        key={ov.name}
+                        to={ov.href}
+                        onClick={() => setIsOverflowOpen(false)}
+                        className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                        role="menuitem"
+                      >
+                        <OvIcon size={16} className="mr-2" aria-hidden />
+                        <span>{ov.name}</span>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>

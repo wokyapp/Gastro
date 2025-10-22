@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 const LS_KITCHEN = 'woky.kitchenOrders';
 const LS_RUNTIME = 'woky.tables.runtime';
 const LS_CASH = 'woky.cash.tickets';
+const LS_GLOBAL_NOTIFS = 'woky.notifications'; // canal global para notificar a todos los roles
 
 interface OrderItem {
   id: string;
@@ -99,6 +100,23 @@ const KitchenView: React.FC = () => {
     window.dispatchEvent(new StorageEvent('storage', { key: LS_CASH, newValue: JSON.stringify(list) }));
   };
 
+  // ==== Notificación global (para todos los roles) ====
+  const pushGlobalNotification = (payload: { id: string | number; title: string; message: string; ts?: string }) => {
+    try {
+      const raw = localStorage.getItem(LS_GLOBAL_NOTIFS);
+      const prev = raw ? JSON.parse(raw) : [];
+      const next = [
+        { ...payload, read: false },
+        ...prev
+      ];
+      localStorage.setItem(LS_GLOBAL_NOTIFS, JSON.stringify(next));
+      // Lanzamos StorageEvent para que otras pestañas/layouts lo capten
+      window.dispatchEvent(new StorageEvent('storage', { key: LS_GLOBAL_NOTIFS, newValue: JSON.stringify(next) }));
+    } catch {
+      // noop
+    }
+  };
+
   useEffect(() => {
     setOrders(load());
     setLoading(false);
@@ -143,10 +161,20 @@ const KitchenView: React.FC = () => {
       rt[key] = {
         ...prev,
         kitchenStatus: newStatus,
-        // NUEVO: si no hay occupiedSince (p.ej. la orden se creó fuera), lo seteamos ahora
         occupiedSince: prev.occupiedSince || new Date().toISOString(),
       };
       setRuntime(rt);
+    }
+
+    // >>> NUEVO: si pasa a "ready", enviar notificación global <<<
+    if (newStatus === 'ready' && ord) {
+      const when = new Date().toISOString();
+      pushGlobalNotification({
+        id: `kready-${ord.id}-${when}`,
+        title: 'Orden lista',
+        message: `Orden ${ord.id} de Mesa ${ord.tableNumber} está lista para entregar.`,
+        ts: when
+      });
     }
 
     showToast('success', `Orden ${orderId} movida a ${getStatusLabel(newStatus)}`);
