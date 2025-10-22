@@ -36,6 +36,24 @@ const GastrobarLayout = () => {
     { id: 3, title: 'Reservación confirmada', message: 'Reserva para 4 personas - 8:00 PM', time: '2 horas', read: true }
   ]);
 
+  // ===== Redirecciones de inicio de sesión / página inicial =====
+  // 1) Si la URL es raíz "/", llevar a /login.
+  // 2) Si ya hay sesión y se visita /login, llevar a la vista principal (Mesas por defecto).
+  useEffect(() => {
+    if (location.pathname === '/') {
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (user && location.pathname === '/login') {
+      navigate('/mesas', { replace: true });
+    }
+  }, [location.pathname, user, navigate]);
+
+  // ===== Si estamos en /login, NO renderizamos el layout (solo la página de login) =====
+  if (location.pathname.startsWith('/login')) {
+    return <Outlet />;
+  }
+
   // ==== Sesión ====
   const handleLogout = () => {
     logout();
@@ -51,8 +69,7 @@ const GastrobarLayout = () => {
   // ==== Navegación (filtrada por rol) ====
   const getNavigation = () => {
     const baseNavigation = [
-      // 🔒 Solicitud: ocultar Dashboard y Métricas en web y móvil.
-      // Mantengo los ítems comentados para referencia futura.
+      // 🔒 Ocultos de momento, se mantienen comentados para referencia.
       /*
       {
         name: 'Dashboard',
