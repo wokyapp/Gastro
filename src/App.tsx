@@ -6,7 +6,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { CashRegisterProvider } from './contexts/CashRegisterContext';
 
 import LoginPage from './pages/LoginPage';
-import GastrobarLayout from './components/GastrobarLayout';
+import GastrobarLayout from './components/GastrobarLayout'; // <-- ruta corregida
 import TablesPage from './pages/gastrobar/TablesPage';
 import OrdersPage from './pages/gastrobar/OrdersPage';
 import MenuPage from './pages/gastrobar/MenuPage';
@@ -26,7 +26,7 @@ const ProtectedRoute = ({
 }) => {
   const { user, isAuthenticated, isLoading } = useAuth();
 
-  // Mostrar un indicador de carga mientras se verifica la autenticación
+  // Indicador de carga mientras se verifica la autenticación
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -35,17 +35,17 @@ const ProtectedRoute = ({
     );
   }
 
-  // Si no hay sesión, llevar siempre a /login
+  // Sin sesión → login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  // Si se exige rol específico y no coincide, llevar al dashboard (o a donde definas)
+  // Chequeo de roles si se pasa requiredRoles
   if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/ordenes" replace />;
   }
 
-  // Redirecciones por rol cuando el usuario entra a "/" o "/dashboard"
+  // Derivación por rol cuando entra a "/" o "/dashboard"
   if (window.location.pathname === '/dashboard' || window.location.pathname === '/') {
     // Cocinero → cocina
     if (user.role === 'cook' || user.role === 'cocinero') {
@@ -59,9 +59,9 @@ const ProtectedRoute = ({
     if (user.role === 'waiter' || user.role === 'mesero') {
       return <Navigate to="/ordenes" replace />;
     }
-    // Admin → métricas
+    // Admin → órdenes (antes iba a /metricas)
     if (user.role === 'admin') {
-      return <Navigate to="/metricas" replace />;
+      return <Navigate to="/ordenes" replace />;
     }
   }
 
@@ -77,10 +77,10 @@ export function App() {
             <CashRegisterProvider>
               <Router>
                 <Routes>
-                  {/* ===== Página inicial deseada: LOGIN ===== */}
+                  {/* Página inicial pública */}
                   <Route path="/login" element={<LoginPage />} />
 
-                  {/* Resto de la app protegida bajo "/" */}
+                  {/* App protegida */}
                   <Route
                     path="/"
                     element={
@@ -89,14 +89,20 @@ export function App() {
                       </ProtectedRoute>
                     }
                   >
-                    {/* Importante: quitamos el redirect al dashboard para que
-                        la ruta "/" caiga en ProtectedRoute y éste decida:
-                        - Sin sesión → /login
-                        - Con sesión → redirección por rol */}
+                    {/* No redirigimos el index a /dashboard; deja que ProtectedRoute derive por rol */}
                     {/* <Route index element={<Navigate to="/dashboard" replace />} /> */}
 
+                    {/* Rutas internas */}
                     <Route path="dashboard" element={<DashboardPage />} />
-                    <Route path="metricas" element={<AnalyticsDashboardPage />} />
+                    {/* Métricas: oculta en el layout, accesible solo para admin si entra directo */}
+                    <Route
+                      path="metricas"
+                      element={
+                        <ProtectedRoute requiredRoles={['admin']}>
+                          <AnalyticsDashboardPage />
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="mesas" element={<TablesPage />} />
                     <Route path="ordenes" element={<OrdersPage />} />
                     <Route path="menu" element={<MenuPage />} />
