@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { CashRegisterProvider } from './contexts/CashRegisterContext';
+
 import LoginPage from './pages/LoginPage';
 import GastrobarLayout from './components/GastrobarLayout';
 import TablesPage from './pages/gastrobar/TablesPage';
@@ -15,63 +16,85 @@ import CashRegisterPage from './pages/gastrobar/CashRegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import AnalyticsDashboardPage from './pages/gastrobar/AnalyticsDashboardPage';
 import ConfigurationPage from './pages/gastrobar/ConfigurationPage';
+
 const queryClient = new QueryClient();
+
 // Componente protector de rutas
 const ProtectedRoute = ({
   children,
   requiredRoles = []
 }) => {
-  const {
-    user,
-    isAuthenticated,
-    isLoading
-  } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
+
   // Mostrar un indicador de carga mientras se verifica la autenticación
   if (isLoading) {
-    return <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+      </div>
+    );
   }
+
+  // Si no hay sesión, llevar siempre a /login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  // Si se exige rol específico y no coincide, llevar al dashboard (o a donde definas)
   if (requiredRoles.length > 0 && !requiredRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
-  // Redirect users based on their roles when they access dashboard or home page
+
+  // Redirecciones por rol cuando el usuario entra a "/" o "/dashboard"
   if (window.location.pathname === '/dashboard' || window.location.pathname === '/') {
-    // Redirect cook/cocinero users to kitchen view
+    // Cocinero → cocina
     if (user.role === 'cook' || user.role === 'cocinero') {
       return <Navigate to="/cocina" replace />;
     }
-    // Redirect cashier/cajero users to cash register
+    // Cajero → caja
     if (user.role === 'cashier' || user.role === 'cajero') {
       return <Navigate to="/caja" replace />;
     }
-    // Redirect waiter/mesero users to orders
+    // Mesero → órdenes
     if (user.role === 'waiter' || user.role === 'mesero') {
       return <Navigate to="/ordenes" replace />;
     }
-    // Redirect admin users to analytics
+    // Admin → métricas
     if (user.role === 'admin') {
       return <Navigate to="/metricas" replace />;
     }
   }
+
   return children;
 };
+
 export function App() {
-  return <div className="w-full h-full bg-white">
+  return (
+    <div className="w-full h-full bg-white">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ToastProvider>
             <CashRegisterProvider>
               <Router>
                 <Routes>
+                  {/* ===== Página inicial deseada: LOGIN ===== */}
                   <Route path="/login" element={<LoginPage />} />
-                  <Route path="/" element={<ProtectedRoute>
+
+                  {/* Resto de la app protegida bajo "/" */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
                         <GastrobarLayout />
-                      </ProtectedRoute>}>
-                    <Route index element={<Navigate to="/dashboard" replace />} />
+                      </ProtectedRoute>
+                    }
+                  >
+                    {/* Importante: quitamos el redirect al dashboard para que
+                        la ruta "/" caiga en ProtectedRoute y éste decida:
+                        - Sin sesión → /login
+                        - Con sesión → redirección por rol */}
+                    {/* <Route index element={<Navigate to="/dashboard" replace />} /> */}
+
                     <Route path="dashboard" element={<DashboardPage />} />
                     <Route path="metricas" element={<AnalyticsDashboardPage />} />
                     <Route path="mesas" element={<TablesPage />} />
@@ -82,11 +105,15 @@ export function App() {
                     <Route path="caja" element={<CashRegisterPage />} />
                     <Route path="configurar" element={<ConfigurationPage />} />
                   </Route>
+
+                  {/* Cualquier ruta desconocida → login */}
+                  <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
               </Router>
             </CashRegisterProvider>
           </ToastProvider>
         </AuthProvider>
       </QueryClientProvider>
-    </div>;
+    </div>
+  );
 }
