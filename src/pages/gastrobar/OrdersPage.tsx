@@ -163,7 +163,7 @@ const OrdersPage: React.FC = () => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [pickupTime, setPickupTime] = useState('');
 
-  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
+  const [, setActiveOrders] = useState<Order[]>([]);
   const [menuSearchTerm, setMenuSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedType, setSelectedType] = useState('all');
@@ -208,24 +208,12 @@ const OrdersPage: React.FC = () => {
               active: true,
             }));
           setWaiters(onlyActiveWaiters);
-          if (onlyActiveWaiters.length === 0) {
-            setWaiters([
-              { id: 101, name: 'Mesero 1', active: true },
-              { id: 102, name: 'Mesero 2', active: true },
-            ]);
-          }
           return;
         }
       }
-      setWaiters([
-        { id: 101, name: 'Mesero 1', active: true },
-        { id: 102, name: 'Mesero 2', active: true },
-      ]);
+      setWaiters([]);
     } catch {
-      setWaiters([
-        { id: 101, name: 'Mesero 1', active: true },
-        { id: 102, name: 'Mesero 2', active: true },
-      ]);
+      setWaiters([]);
     }
   }, []);
 
@@ -360,7 +348,7 @@ const OrdersPage: React.FC = () => {
 
             if (table.waiter?.name && !selectedWaiter) {
               const match = waiters.find(w => w.name === table.waiter!.name) || null;
-              setSelectedWaiter(match ?? { id: 100000 + Math.floor(Math.random()*9999), name: table.waiter!.name, active: true });
+              setSelectedWaiter(match);
             }
           }
         }
@@ -374,7 +362,7 @@ const OrdersPage: React.FC = () => {
               if (rec.customerName) setCustomerName(rec.customerName);
               if (rec.waiter) {
                 const match = waiters.find((w) => w.name === rec.waiter) || null;
-                setSelectedWaiter(match ?? { id: 9999, name: rec.waiter, active: true });
+                setSelectedWaiter(match);
               }
 
               if (rec.items && rec.items.length > 0) {
@@ -391,9 +379,7 @@ const OrdersPage: React.FC = () => {
               setLockHeaderInfo(!!locked);
             }
           }
-        } catch {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
 
         try {
           const list = loadKitchen();
@@ -420,9 +406,7 @@ const OrdersPage: React.FC = () => {
           } else {
             setCurrentKitchenOrderId(null);
           }
-        } catch {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
       }
 
       setLoading(false);
@@ -448,9 +432,7 @@ const OrdersPage: React.FC = () => {
               active: true,
             }));
           setWaiters(onlyActiveWaiters);
-        } catch {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
       }
       if (e.key === LS_KITCHEN && selectedTable) {
         try {
@@ -459,7 +441,7 @@ const OrdersPage: React.FC = () => {
             (o: KitchenOrder) => String(o.tableId || '') === String(selectedTable.id) && (o.status === 'new' || o.status === 'preparing')
           );
           setCurrentKitchenOrderId(editable ? editable.id : null);
-        } catch {/* ignore */}
+        } catch { /* ignore */ }
       }
     };
     window.addEventListener('storage', onStorage);
@@ -476,9 +458,7 @@ const OrdersPage: React.FC = () => {
           const locked = rec && rec.kitchenStatus === 'ready';
           setIsEditLocked(!!locked);
           if (locked) setLockHeaderInfo(true);
-        } catch {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
       }
     };
     window.addEventListener('storage', onStorage);
@@ -512,7 +492,7 @@ const OrdersPage: React.FC = () => {
 
   const filteredMenuItems = menuItems.filter((item) => {
     const q = menuSearchTerm.trim().toLowerCase();
-    const matchesSearch = !q || item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
+       const matchesSearch = !q || item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
     const matchesType = selectedType === 'all' || item.type === selectedType;
     const matchesCategory = selectedCategory === '' || item.category === selectedCategory;
     return matchesSearch && matchesType && matchesCategory;
@@ -545,15 +525,34 @@ const OrdersPage: React.FC = () => {
     setExpandedCategories(updated);
   };
 
+  // === Helper: detectar mobile (md- breakpoint) ===
+  const isMobileViewport = () => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(max-width: 767px)').matches;
+  };
+
   // Acciones sobre items (bloqueadas si isEditLocked)
   const addItemToOrder = (item: MenuItem) => {
     if (isEditLocked) {
       showToast('error', 'La orden está LISTA en cocina. Espera la entrega o agrega una nueva luego.');
       return;
     }
-    const existing = selectedItems.find((i) => i.id === item.id);
-    if (existing) setSelectedItems(selectedItems.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i)));
-    else setSelectedItems([...selectedItems, { ...item, quantity: 1 }]);
+
+    const exists = selectedItems.find((i) => i.id === item.id);
+
+    if (exists) {
+      setSelectedItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i))
+      );
+    } else {
+      setSelectedItems((prev) => [...prev, { ...item, quantity: 1 }]);
+    }
+
+    // ✅ Toast SOLO en mobile
+    if (isMobileViewport()) {
+      const label = exists ? `+1 ${item.name}` : `${item.name} agregado`;
+      showToast('success', label);
+    }
   };
 
   const removeItemFromOrder = (itemId: number) => {
@@ -586,10 +585,10 @@ const OrdersPage: React.FC = () => {
     }
     setSelectedTable(table);
 
-    // Autoselección de mesero por defecto si la mesa lo tiene
+    // Autoselección de mesero por defecto si la mesa lo tiene (solo si existe en waiters)
     if (table.waiter?.name && !selectedWaiter) {
       const match = waiters.find(w => w.name === table.waiter!.name) || null;
-      setSelectedWaiter(match ?? { id: 100000 + Math.floor(Math.random()*9999), name: table.waiter!.name, active: true });
+      setSelectedWaiter(match);
     }
   };
 
@@ -778,6 +777,139 @@ const OrdersPage: React.FC = () => {
     return `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center ${map[color] || map.gray}`;
   };
 
+  // ---------- Resumen reutilizable ----------
+  const renderSummary = (variant: 'mobile' | 'desktop' = 'desktop') => {
+    const containerBase = 'rounded-xl shadow p-4';
+    const variantCls =
+      variant === 'mobile'
+        ? 'bg-blue-50 border border-blue-200'
+        : 'bg-white';
+    const titleCls =
+      variant === 'mobile'
+        ? 'font-medium text-lg mb-3 text-blue-900'
+        : 'font-medium text-lg mb-3';
+    return (
+      <div className={`${containerBase} ${variantCls}`}>
+        {deliveredItems.length > 0 && (
+          <div className="mb-4">
+            <h3 className={`font-semibold text-sm mb-1 ${variant === 'mobile' ? 'text-blue-800' : 'text-gray-700'}`}>
+              Entregado
+            </h3>
+            <div className={`rounded-lg p-2 max-h-40 overflow-auto ${variant === 'mobile' ? 'bg-blue-100 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
+              {deliveredItems.map((it, idx) => (
+                <div key={idx} className="flex justify-between text-xs text-gray-700">
+                  <span className="truncate">
+                    {it.quantity}x {it.name}
+                  </span>
+                  <span className="whitespace-nowrap">
+                    ${new Intl.NumberFormat('es-CO').format(it.price * it.quantity)}
+                  </span>
+                </div>
+              ))}
+              {deliveredMeta && (
+                <div className={`mt-2 pt-1 flex justify-between text-xs font-medium border-t ${variant === 'mobile' ? 'border-blue-200 text-blue-900' : 'border-green-200 text-green-800'}`}>
+                  <span>{deliveredMeta.itemsCount} ítems</span>
+                  <span>${new Intl.NumberFormat('es-CO').format(deliveredMeta.total)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <h3 className={titleCls}>Resumen de Orden</h3>
+        {selectedItems.length === 0 ? (
+          <p className={`text-sm my-4 ${variant === 'mobile' ? 'text-blue-800/80' : 'text-gray-500'}`}>
+            No hay productos seleccionados
+          </p>
+        ) : (
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {selectedItems.map((item) => (
+              <div key={item.id} className={`flex justify-between items-center p-2 rounded ${variant === 'mobile' ? 'bg-white/70' : 'bg-gray-50'}`}>
+                <div className="flex-1 text-left">
+                  <p className="font-medium">{item.name}</p>
+                  <p className="text-sm text-gray-600">${new Intl.NumberFormat('es-CO').format(item.price)}</p>
+                </div>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
+                    className={`px-2 py-1 rounded-l ${isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    aria-label={`Disminuir ${item.name}`}
+                    disabled={isEditLocked}
+                  >
+                    -
+                  </button>
+                  <span className="px-3 py-1 bg-gray-100" aria-live="polite">
+                    {item.quantity}
+                  </span>
+                  <button
+                    onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
+                    className={`px-2 py-1 rounded-r ${isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    aria-label={`Aumentar ${item.name}`}
+                    disabled={isEditLocked}
+                  >
+                    +
+                  </button>
+                  <button
+                    onClick={() => removeItemFromOrder(item.id)}
+                    className={`ml-2 p-1 rounded ${isEditLocked ? 'text-red-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                    aria-label={`Eliminar ${item.name}`}
+                    disabled={isEditLocked}
+                  >
+                    <TrashIcon size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <div className="flex justify-between font-medium">
+            <span>Total:</span>
+            <span>${new Intl.NumberFormat('es-CO').format(calculateTotal())}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => navigate('/mesas')}
+            className="py-2 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+          >
+            Volver a Mesas
+          </button>
+          <button
+            onClick={handleSubmitOrder}
+            disabled={
+              isEditLocked ||
+              (selectedItems.length === 0 && !currentKitchenOrderId) ||
+              (orderType === 'mesa' && !selectedTable) ||
+              !selectedWaiter ||
+              !customerName.trim()
+            }
+            className={`py-2 px-4 rounded-lg text-white text-sm font-medium flex items-center justify-center ${
+              isEditLocked ||
+              (selectedItems.length === 0 && !currentKitchenOrderId) ||
+              (orderType === 'mesa' && !selectedTable) ||
+              !selectedWaiter ||
+              !customerName.trim()
+                ? 'bg-gray-400'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+            }`}
+          >
+            <CheckIcon size={16} className="mr-1" />
+            {currentKitchenOrderId
+              ? selectedItems.length === 0
+                ? 'Cancelar y Liberar'
+                : 'Actualizar en Cocina'
+              : isEditLocked
+              ? 'Bloqueada (Lista en cocina)'
+              : 'Enviar a Cocina'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-4">
       {/* Header */}
@@ -797,6 +929,7 @@ const OrdersPage: React.FC = () => {
               <p className="text-sm text-blue-100 mt-1">Estás editando la orden en cocina (estado: Orden/Preparación).</p>
             )}
           </div>
+          {/* Ir a Cocina se mantiene en el header, también en mobile */}
           <div className="flex space-x-2">
             <button
               className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-400 flex items-center"
@@ -827,7 +960,7 @@ const OrdersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Aviso de bloqueo (solo cuando está LISTA en cocina) */}
+      {/* Aviso de bloqueo */}
       {isEditLocked && (
         <div className="mb-4 rounded-lg border border-green-300 bg-green-50 text-green-900 p-3 text-sm">
           Esta orden está <strong>LISTA en cocina</strong>. Edición y cancelación deshabilitadas hasta que sea entregada.
@@ -840,7 +973,7 @@ const OrdersPage: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Panel izquierdo */}
+          {/* Panel izquierdo (desktop) */}
           <div className="md:col-span-1 space-y-4">
             <div className="bg-white rounded-xl shadow p-4">
               {/* Cliente */}
@@ -882,6 +1015,36 @@ const OrdersPage: React.FC = () => {
                 />
               </div>
 
+              {/* MESERO: justo debajo del nombre del cliente (solo MOBILE) */}
+              <div className="mt-3 md:hidden">
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="waiterSelectMobile">
+                  Mesero que lo atiende
+                </label>
+                <select
+                  id="waiterSelectMobile"
+                  className="w-full p-1.5 border border-gray-300 rounded-md text-sm disabled:bg-gray-50"
+                  value={selectedWaiter ? selectedWaiter.id : ''}
+                  onChange={(e) => {
+                    const waiterId = Number(e.target.value);
+                    const waiter = waiters.find((w) => w.id === waiterId) || null;
+                    setSelectedWaiter(waiter);
+                  }}
+                  disabled={isEditLocked}
+                >
+                  <option value="">-- Seleccionar mesero --</option>
+                  {waiters.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+                {waiters.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    No hay meseros activos configurados. Ve a <span className="font-medium">Configuración &gt; Usuarios</span>.
+                  </p>
+                )}
+              </div>
+
               {/* Campos extra para 'Para llevar' */}
               {orderType === 'llevar' && (
                 <div className="grid grid-cols-1 gap-3 mt-3">
@@ -915,8 +1078,8 @@ const OrdersPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Mesero (desde Configuración) */}
-              <div className="mt-3">
+              {/* MESERO: bloque original solo para DESKTOP */}
+              <div className="mt-3 hidden md:block">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="waiterSelect">
                     Mesero Asignado
@@ -935,199 +1098,67 @@ const OrdersPage: React.FC = () => {
                   disabled={isEditLocked}
                 >
                   <option value="">-- Seleccionar mesero --</option>
-                  {waiters
-                    .filter((w) => w.active)
-                    .map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  {selectedWaiter && !waiters.some((w) => w.id === selectedWaiter.id) && (
-                    <option value={selectedWaiter.id}>{selectedWaiter.name}</option>
-                  )}
-                </select>
-              </div>
-
-              {/* Mesa: solo si tipo = mesa */}
-              {orderType === 'mesa' ? (
-                <div className="mt-4">
-                  {selectedTable ? (
-                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-medium">{selectedTable.name}</h3>
-                        {!existingOrder && !isEditLocked && !currentKitchenOrderId && (
-                          <button
-                            onClick={() => setSelectedTable(null)}
-                            className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                          >
-                            Cambiar Mesa
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-center text-sm text-gray-600">
-                        <UtensilsIcon size={14} className="mr-1" />
-                        <p>
-                          Capacidad: <span className="font-medium">{selectedTable.seats} personas</span>
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 className="font-medium text-gray-700 mb-2">Selecciona una mesa:</h3>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        {availableTablesForSelection.map((table) => (
-                          <button
-                            key={table.id}
-                            onClick={() => selectTable(table)}
-                            className="p-2 rounded-md text-center transition-colors border border-green-300 bg-green-50 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            aria-label={`Seleccionar ${table.name}`}
-                            disabled={isEditLocked}
-                          >
-                            <div className="font-medium text-sm">{table.name}</div>
-                            <div className="flex justify-center items-center text-xs space-x-1 mt-1">
-                              <UtensilsIcon size={12} />
-                              <span>{table.seats} personas</span>
-                            </div>
-                            <div className="text-xs mt-1">✓ Disponible</div>
-                          </button>
-                        ))}
-                        {availableTablesForSelection.length === 0 && (
-                          <div className="col-span-2 text-xs text-gray-500 text-center py-2">No hay mesas disponibles por ahora.</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-
-            {/* Resumen (incluye entregado previo) */}
-            <div className="bg-white rounded-xl shadow p-4">
-              {deliveredItems.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="font-semibold text-sm text-gray-700 mb-1">Entregado</h3>
-                  <div className="border border-green-200 rounded-lg bg-green-50 p-2 max-h-40 overflow-auto">
-                    {deliveredItems.map((it, idx) => (
-                      <div key={idx} className="flex justify-between text-xs text-gray-700">
-                        <span className="truncate">
-                          {it.quantity}x {it.name}
-                        </span>
-                        <span className="whitespace-nowrap">
-                          ${new Intl.NumberFormat('es-CO').format(it.price * it.quantity)}
-                        </span>
-                      </div>
-                    ))}
-                    {deliveredMeta && (
-                      <div className="border-t border-green-200 mt-2 pt-1 flex justify-between text-xs font-medium text-green-800">
-                        <span>{deliveredMeta.itemsCount} ítems</span>
-                        <span>${new Intl.NumberFormat('es-CO').format(deliveredMeta.total)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <h3 className="font-medium text-lg mb-3">Resumen de Orden</h3>
-              {selectedItems.length === 0 ? (
-                <p className="text-sm text-gray-500 my-4">No hay productos seleccionados</p>
-              ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {selectedItems.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <div className="flex-1 text-left">
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-gray-600">${new Intl.NumberFormat('es-CO').format(item.price)}</p>
-                      </div>
-                      <div className="flex items-center">
-                        <button
-                          onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
-                          className={`px-2 py-1 rounded-l ${
-                            isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'
-                          }`}
-                          aria-label={`Disminuir ${item.name}`}
-                          disabled={isEditLocked}
-                        >
-                          -
-                        </button>
-                        <span className="px-3 py-1 bg-gray-100" aria-live="polite">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                          className={`px-2 py-1 rounded-r ${
-                            isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'
-                          }`}
-                          aria-label={`Aumentar ${item.name}`}
-                          disabled={isEditLocked}
-                        >
-                          +
-                        </button>
-                        <button
-                          onClick={() => removeItemFromOrder(item.id)}
-                          className={`ml-2 p-1 rounded ${
-                            isEditLocked ? 'text-red-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'
-                          }`}
-                          aria-label={`Eliminar ${item.name}`}
-                          disabled={isEditLocked}
-                        >
-                          <TrashIcon size={16} />
-                        </button>
-                      </div>
-                    </div>
+                  {waiters.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
                   ))}
-                </div>
-              )}
-
-              <div className="mt-4 pt-3 border-t border-gray-200">
-                <div className="flex justify-between font-medium">
-                  <span>Total:</span>
-                  <span>${new Intl.NumberFormat('es-CO').format(calculateTotal())}</span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => navigate('/mesas')}
-                  className="py-2 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
-                >
-                  Volver a Mesas
-                </button>
-                <button
-                  onClick={handleSubmitOrder}
-                  disabled={
-                    isEditLocked ||
-                    (selectedItems.length === 0 && !currentKitchenOrderId) ||
-                    (orderType === 'mesa' && !selectedTable) ||
-                    !selectedWaiter ||
-                    !customerName.trim()
-                  }
-                  className={`py-2 px-4 rounded-lg text-white text-sm font-medium flex items-center justify-center ${
-                    isEditLocked ||
-                    (selectedItems.length === 0 && !currentKitchenOrderId) ||
-                    (orderType === 'mesa' && !selectedTable) ||
-                    !selectedWaiter ||
-                    !customerName.trim()
-                      ? 'bg-gray-400'
-                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
-                  }`}
-                >
-                  <CheckIcon size={16} className="mr-1" />
-                  {currentKitchenOrderId
-                    ? selectedItems.length === 0
-                      ? 'Cancelar y Liberar'
-                      : 'Actualizar en Cocina'
-                    : isEditLocked
-                    ? 'Bloqueada (Lista en cocina)'
-                    : 'Enviar a Cocina'}
-                </button>
+                </select>
+                {waiters.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    No hay meseros activos configurados. Ve a <span className="font-medium">Configuración &gt; Usuarios</span>.
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Resumen: visible en desktop; en mobile se muestra debajo del Menú con azul claro */}
+            <div className="hidden md:block">{renderSummary('desktop')}</div>
           </div>
 
           {/* Panel derecho: Menú */}
           <div className="md:col-span-2">
             <div className="bg-white rounded-xl shadow p-4">
-              <div className="flex justify-between items-center mb-3">
+              {/* MOBILE: barra búsqueda una sola línea + botón colapsar */}
+              <div className="md:hidden mb-3">
+                <div className="relative w-full">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <SearchIcon size={16} className="text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Buscar productos..."
+                    value={menuSearchTerm}
+                    onChange={(e) => setMenuSearchTerm(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm leading-5"
+                    aria-label="Buscar productos"
+                  />
+                </div>
+                <div className="mt-2">
+                  <button
+                    onClick={toggleAllCategories}
+                    className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center ${
+                      allCategoriesExpanded ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                    }`}
+                    aria-label={allCategoriesExpanded ? 'Colapsar todo' : 'Expandir todo'}
+                  >
+                    {allCategoriesExpanded ? (
+                      <>
+                        <EyeOffIcon size={16} className="mr-1" />
+                        Colapsar todo
+                      </>
+                    ) : (
+                      <>
+                        <EyeIcon size={16} className="mr-1" />
+                        Expandir todo
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* DESKTOP: título + colapsar + búsqueda lado a lado */}
+              <div className="hidden md:flex justify-between items-center mb-3">
                 <h3 className="font-medium text-lg">Menú</h3>
                 <div className="flex items-center gap-2">
                   <button
@@ -1262,6 +1293,9 @@ const OrdersPage: React.FC = () => {
                   })}
                 </div>
               )}
+
+              {/* MOBILE: Resumen debajo de Menú con azul claro */}
+              <div className="mt-4 md:hidden">{renderSummary('mobile')}</div>
             </div>
           </div>
         </div>

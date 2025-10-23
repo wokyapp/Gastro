@@ -274,7 +274,7 @@ const TablesPage: React.FC = () => {
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Mesas</h1>
-          <p className="text-gray-600">Listado en vivo según <span className="font-medium">Configuración &gt; Mesas</span> (se muestran activas e inactivas).</p>
+          {/* Texto explicativo eliminado a petición del usuario */}
         </div>
         <button
           onClick={load}
