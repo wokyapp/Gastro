@@ -3,3 +3,27 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 /* DO NOT DELETE THESE TAILWIND IMPORTS, OTHERWISE THE STYLING WILL NOT RENDER AT ALL */
+
+/* ===========================
+   Global tweaks (mobile)
+   - Mitiga el "pull-to-refresh" que dispara 404 en rutas SPA al recargar duro.
+   - No lo desactiva al 100% en iOS, pero reduce disparos accidentales.
+   =========================== */
+html, body, #root {
+  height: 100%;
+}
+
+html, body {
+  /* Evita que el viewport haga "overscroll" vertical y dispare el gesto */
+  overscroll-behavior-y: contain;
+}
+
+/* Utilidad opcional para contenedores específicos donde NO quieres PTR */
+.no-ptr {
+  overscroll-behavior: contain;
+}
+
+/* Suaviza el scroll en navegadores compatibles */
+html {
+  scroll-behavior: smooth;
+}
