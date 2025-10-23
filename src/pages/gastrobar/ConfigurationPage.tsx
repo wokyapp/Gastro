@@ -101,6 +101,19 @@ const ConfigurationPage = () => {
 
   // ======= Business =======
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings>(defaultBusiness);
+  // Modo edición bloqueado por defecto
+  const [isEditingBusiness, setIsEditingBusiness] = useState(false);
+  const [businessBackup, setBusinessBackup] = useState<BusinessSettings | null>(null);
+
+  // Nuevo: detectar “dirty” para mostrar CTA Actualizar solo si hay cambios
+  const isBusinessDirty = useMemo(() => {
+    if (!isEditingBusiness || !businessBackup) return false;
+    try {
+      return JSON.stringify(businessSettings) !== JSON.stringify(businessBackup);
+    } catch {
+      return true;
+    }
+  }, [isEditingBusiness, businessSettings, businessBackup]);
 
   // ======= Users / Waiters (persistidos en LS_WAITERS) =======
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -247,14 +260,28 @@ const ConfigurationPage = () => {
     }
   }, []);
 
-  // ===== Business submit =====
+  // ===== Business: editar / cancelar / guardar =====
+  const startEditBusiness = () => {
+    setBusinessBackup(businessSettings);
+    setIsEditingBusiness(true);
+  };
+
+  const cancelEditBusiness = () => {
+    if (businessBackup) setBusinessSettings(businessBackup);
+    setIsEditingBusiness(false);
+    showToast('info', 'Edición cancelada');
+  };
+
   const handleBusinessSettingsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isEditingBusiness) return; // no-op si está bloqueado
     setLoading(true);
     setTimeout(() => {
       try { localStorage.setItem(LS_BUSINESS, JSON.stringify(businessSettings)); } catch {}
       setLoading(false);
-      showToast('success', 'Configuración del negocio actualizada correctamente');
+      setIsEditingBusiness(false);
+      setBusinessBackup(null);
+      showToast('success', 'Información del negocio actualizada');
     }, 400);
   };
 
@@ -547,179 +574,277 @@ const ConfigurationPage = () => {
       {activeTab === 'business' && (
         <div>
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-medium mb-4">Información del Negocio</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Esta información se utilizará en los tickets, facturas y reportes.
-            </p>
-            <form onSubmit={handleBusinessSettingsSubmit}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Negocio</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <BuildingIcon size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      value={businessSettings.name}
-                      onChange={e => setBusinessSettings({ ...businessSettings, name: e.target.value })}
-                      className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">NIT / Identificación Fiscal</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <IdCardIcon size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      value={businessSettings.nit}
-                      onChange={e => setBusinessSettings({ ...businessSettings, nit: e.target.value })}
-                      className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <MapPinIcon size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      value={businessSettings.address}
-                      onChange={e => setBusinessSettings({ ...businessSettings, address: e.target.value })}
-                      className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <PhoneIcon size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                      type="text"
-                      value={businessSettings.phone}
-                      onChange={e => setBusinessSettings({ ...businessSettings, phone: e.target.value })}
-                      className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <MailIcon size={16} className="text-gray-400" />
-                    </div>
-                    <input
-                      type="email"
-                      value={businessSettings.email}
-                      onChange={e => setBusinessSettings({ ...businessSettings, email: e.target.value })}
-                      className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Impuestos */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de impuesto</label>
-                  <select
-                    value={businessSettings.taxType}
-                    onChange={e => setBusinessSettings({ ...businessSettings, taxType: e.target.value as 'iva'|'impoconsumo' })}
-                    className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                  >
-                    <option value="impoconsumo">Impoconsumo (RTE-IMP)</option>
-                    <option value="iva">IVA</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">% {businessSettings.taxType === 'impoconsumo' ? 'Impoconsumo' : 'IVA'}</label>
-                  <input
-                    type="number"
-                    value={businessSettings.taxRate}
-                    onChange={e => setBusinessSettings({ ...businessSettings, taxRate: Math.max(0, parseInt(e.target.value)||0) })}
-                    min={0} max={100}
-                    className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    required
-                  />
-                </div>
-
-                {/* Numeración de facturas */}
-                <div className="md:col-span-2">
-                  <h3 className="text-base font-medium text-gray-900 mb-2">Numeración de facturas</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Serie / prefijo</label>
-                      <input
-                        type="text"
-                        value={businessSettings.invoiceSeries}
-                        onChange={e => setBusinessSettings({ ...businessSettings, invoiceSeries: e.target.value })}
-                        className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        placeholder="FE, POS, A, etc."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Separador</label>
-                      <input
-                        type="text"
-                        maxLength={3}
-                        value={businessSettings.invoiceSeparator}
-                        onChange={e => setBusinessSettings({ ...businessSettings, invoiceSeparator: e.target.value })}
-                        className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        placeholder="-"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Relleno (dígitos)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={12}
-                        value={businessSettings.invoicePadding}
-                        onChange={e => setBusinessSettings({ ...businessSettings, invoicePadding: Math.max(1, Math.min(12, parseInt(e.target.value)||1)) })}
-                        className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Siguiente número</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={businessSettings.nextInvoiceNumber}
-                        onChange={e => setBusinessSettings({ ...businessSettings, nextInvoiceNumber: Math.max(1, parseInt(e.target.value)||1) })}
-                        className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm text-gray-600">
-                    Vista previa:&nbsp;
-                    <span className="font-semibold">
-                      {`${businessSettings.invoiceSeries || ''}${businessSettings.invoiceSeparator || ''}${String(businessSettings.nextInvoiceNumber || 1).padStart(businessSettings.invoicePadding || 1, '0')}`}
-                    </span>
-                  </div>
-                </div>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-medium mb-1">Información del Negocio</h2>
+                <p className="text-sm text-gray-500 mb-2">
+                  Esta información se utilizará en los tickets, facturas y reportes.
+                </p>
               </div>
 
-              <div className="mt-6 flex justify-end">
+              {/* Botón Editar/Bloquear (desktop) */}
+              {!isEditingBusiness ? (
                 <button
-                  type="submit"
-                  className="flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  disabled={loading}
+                  type="button"
+                  onClick={startEditBusiness}
+                  className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  aria-label="Editar información del negocio"
                 >
-                  {loading ? <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" /> : <SaveIcon size={16} className="mr-2" />}
-                  Guardar Cambios
+                  <PencilIcon size={16} className="mr-1" />
+                  Editar
+                </button>
+              ) : (
+                <div className="hidden sm:flex gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelEditBusiness}
+                    className="px-3 py-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-sm font-medium"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    form="business-form"
+                    className="inline-flex items-center px-3 py-1.5 rounded-md text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    disabled={loading || !isBusinessDirty}
+                    aria-label="Actualizar información del negocio"
+                  >
+                    {loading ? <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" /> : <SaveIcon size={16} className="mr-2" />}
+                    Actualizar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Botón Editar en mobile (fuera del form) */}
+            {!isEditingBusiness && (
+              <div className="sm:hidden mb-3">
+                <button
+                  type="button"
+                  onClick={startEditBusiness}
+                  className="w-full inline-flex items-center justify-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  aria-label="Editar información del negocio en móvil"
+                >
+                  <PencilIcon size={16} className="mr-1" />
+                  Editar
                 </button>
               </div>
+            )}
+
+            <form id="business-form" onSubmit={handleBusinessSettingsSubmit} className="mt-2">
+              <fieldset
+                aria-readonly={!isEditingBusiness}
+                aria-disabled={!isEditingBusiness}
+                className={`${!isEditingBusiness ? 'opacity-90' : ''}`}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Negocio</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <BuildingIcon size={16} className="text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        value={businessSettings.name}
+                        onChange={e => setBusinessSettings({ ...businessSettings, name: e.target.value })}
+                        className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                        required
+                        disabled={!isEditingBusiness}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIT / Identificación Fiscal</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <IdCardIcon size={16} className="text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        value={businessSettings.nit}
+                        onChange={e => setBusinessSettings({ ...businessSettings, nit: e.target.value })}
+                        className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                        required
+                        disabled={!isEditingBusiness}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <MapPinIcon size={16} className="text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        value={businessSettings.address}
+                        onChange={e => setBusinessSettings({ ...businessSettings, address: e.target.value })}
+                        className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                        required
+                        disabled={!isEditingBusiness}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <PhoneIcon size={16} className="text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        value={businessSettings.phone}
+                        onChange={e => setBusinessSettings({ ...businessSettings, phone: e.target.value })}
+                        className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                        required
+                        disabled={!isEditingBusiness}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <MailIcon size={16} className="text-gray-400" />
+                      </div>
+                      <input
+                        type="email"
+                        value={businessSettings.email}
+                        onChange={e => setBusinessSettings({ ...businessSettings, email: e.target.value })}
+                        className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                        required
+                        disabled={!isEditingBusiness}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Impuestos */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de impuesto</label>
+                    <select
+                      value={businessSettings.taxType}
+                      onChange={e => setBusinessSettings({ ...businessSettings, taxType: e.target.value as 'iva'|'impoconsumo' })}
+                      className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                      disabled={!isEditingBusiness}
+                    >
+                      <option value="impoconsumo">Impoconsumo (RTE-IMP)</option>
+                      <option value="iva">IVA</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">% {businessSettings.taxType === 'impoconsumo' ? 'Impoconsumo' : 'IVA'}</label>
+                    <input
+                      type="number"
+                      value={businessSettings.taxRate}
+                      onChange={e => setBusinessSettings({ ...businessSettings, taxRate: Math.max(0, parseInt(e.target.value)||0) })}
+                      min={0} max={100}
+                      className="block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                      required
+                      disabled={!isEditingBusiness}
+                    />
+                  </div>
+
+                  {/* Numeración de facturas */}
+                  <div className="md:col-span-2">
+                    <h3 className="text-base font-medium text-gray-900 mb-2">Numeración de facturas</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Serie / prefijo</label>
+                        <input
+                          type="text"
+                          value={businessSettings.invoiceSeries}
+                          onChange={e => setBusinessSettings({ ...businessSettings, invoiceSeries: e.target.value })}
+                          className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                          placeholder="FE, POS, A, etc."
+                          disabled={!isEditingBusiness}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Separador</label>
+                        <input
+                          type="text"
+                          maxLength={3}
+                          value={businessSettings.invoiceSeparator}
+                          onChange={e => setBusinessSettings({ ...businessSettings, invoiceSeparator: e.target.value })}
+                          className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                          placeholder="-"
+                          disabled={!isEditingBusiness}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Relleno (dígitos)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={businessSettings.invoicePadding}
+                          onChange={e => setBusinessSettings({ ...businessSettings, invoicePadding: Math.max(1, Math.min(12, parseInt(e.target.value)||1)) })}
+                          className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                          disabled={!isEditingBusiness}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Siguiente número</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={businessSettings.nextInvoiceNumber}
+                          onChange={e => setBusinessSettings({ ...businessSettings, nextInvoiceNumber: Math.max(1, parseInt(e.target.value)||1) })}
+                          className="block w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                          disabled={!isEditingBusiness}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      Vista previa:&nbsp;
+                      <span className="font-semibold">
+                        {`${businessSettings.invoiceSeries || ''}${businessSettings.invoiceSeparator || ''}${String(businessSettings.nextInvoiceNumber || 1).padStart(businessSettings.invoicePadding || 1, '0')}`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              {/* Espacio inferior para que el contenido no quede tapado por la barra fija en mobile */}
+              {isEditingBusiness && isBusinessDirty && (
+                <div aria-hidden className="h-20 sm:h-0" />
+              )}
             </form>
+
+            {/* Barra sticky en mobile: aparece SOLO si hay cambios */}
+            {isEditingBusiness && isBusinessDirty && (
+              <div
+                className="sm:hidden fixed inset-x-0 bottom-0 p-3 bg-white/95 backdrop-blur shadow-[0_-2px_10px_rgba(0,0,0,0.06)] border-t border-gray-200 z-50"
+                role="region"
+                aria-label="Acciones de actualización"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+              >
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelEditBusiness}
+                    className="flex-1 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    form="business-form"
+                    className="flex-1 inline-flex items-center justify-center py-2 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    disabled={loading}
+                    aria-label="Actualizar información del negocio"
+                  >
+                    {loading ? (
+                      <span className="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
+                    ) : (
+                      <SaveIcon size={16} className="mr-2" />
+                    )}
+                    Actualizar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -746,6 +871,7 @@ const ConfigurationPage = () => {
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="pl-10 block w-full rounded-md border border-gray-300 shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                  aria-label="Buscar usuarios"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <SearchIcon size={16} className="text-gray-400" />

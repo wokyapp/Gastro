@@ -420,7 +420,7 @@ const GastrobarLayout = () => {
       </main>
 
       {/* ===== Navegación inferior (mobile-first) ===== */}
-      <nav className="bg-white border-t border-gray-200 sticky bottom-0 shadow-lg w-full">
+      <nav className="bg-white border-t border-gray-200 sticky bottom-0 shadow-lg w-full z-50">
         <div className="flex items-center justify-between h-16">
           <div className="relative flex w-full justify-between px-1">
             {/* Ítems principales en orden: Mesas, Órdenes, Caja, Cocina */}
@@ -467,7 +467,7 @@ const GastrobarLayout = () => {
               {isOverflowOpen && (
                 <div
                   role="menu"
-                  className="absolute bottom-16 right-1 min-w-[12rem] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20"
+                  className="absolute bottom-16 right-1 min-w-[12rem] bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-[120]"
                 >
                   {overflowItems.map(ov => {
                     const OvIcon = ov.icon;

@@ -10,7 +10,7 @@ import { useToast } from '../../contexts/ToastContext';
 const LS_TABLES = 'woky.tables';
 const LS_RESERVATIONS = 'woky.reservations';
 const LS_RUNTIME = 'woky.tables.runtime';
-const SS_RES_SESSION = 'woky.reservations.sessionId'; // <- sesión actual de reservas (solo mostrar las nuevas)
+const SS_RES_SESSION = 'woky.reservations.sessionId';
 
 /** ===================== Tipos ===================== **/
 type TableItem = {
@@ -36,10 +36,8 @@ type Reservation = {
   tableNumber: number;
   status: 'confirmed' | 'pending' | 'cancelled' | 'completed';
   notes?: string;
-
-  /** NUEVO: metadatos para filtrar solo “las que creo nuevas” */
-  createdAt?: string;      // ISO
-  sessionId?: string;      // id de sesión para mostrar solo las creadas en esta sesión
+  createdAt?: string;
+  sessionId?: string;
 };
 
 type Runtime = {
@@ -59,7 +57,7 @@ type Runtime = {
 const todayStr = () => new Date().toISOString().split('T')[0];
 const isToday = (yyyy_mm_dd: string) => yyyy_mm_dd === todayStr();
 
-/** ===================== Helpers LS (inline, sin store externo) ===================== **/
+/** ===================== Helpers LS ===================== **/
 const getTables = (): TableItem[] => {
   try { return JSON.parse(localStorage.getItem(LS_TABLES) || '[]'); } catch { return []; }
 };
@@ -99,13 +97,11 @@ const setTableStatus = (tableId: string, status: TableItem['status']) => {
     setTables(tables);
   }
 };
-
 const reserveTableIfToday = (res: Reservation) => {
   if (res.tableId && isToday(res.date) && res.status === 'confirmed') {
     setTableStatus(res.tableId, 'reservada');
   }
 };
-
 const freeIfReservedToday = (res: Reservation) => {
   if (res.tableId && isToday(res.date)) {
     const tables = getTables();
@@ -116,7 +112,6 @@ const freeIfReservedToday = (res: Reservation) => {
     }
   }
 };
-
 const occupyTableForArrival = (tableId: string, customerName: string) => {
   setTableStatus(tableId, 'ocupada');
   const rt = getRuntime();
@@ -136,11 +131,9 @@ const ReservationsPage = () => {
   const { showToast } = useToast();
   const { softBtn, ctaGrad } = useOutletContext<any>();
 
-  /** ====== SESIÓN DE RESERVAS: mostrar solo las creadas en esta sesión ====== **/
+  /** Sesión de reservas **/
   const [sessionId, setSessionId] = useState<string>('');
   useEffect(() => {
-    // Persistimos el sessionId en sessionStorage para que sobreviva a reloads de esta pestaña,
-    // pero no a cerrar la pestaña (nuevo id en nueva sesión).
     let sid = sessionStorage.getItem(SS_RES_SESSION);
     if (!sid) {
       sid = `S${Date.now()}`;
@@ -154,13 +147,10 @@ const ReservationsPage = () => {
   useEffect(() => {
     const loadTables = () => setTablesState(getTables().sort((a,b)=>a.number-b.number));
     loadTables();
-
     const onStorage = (e: StorageEvent) => { if (e.key === LS_TABLES) loadTables(); };
     const onCustom = () => loadTables();
-
     window.addEventListener('storage', onStorage);
     window.addEventListener('woky:tables-updated', onCustom as EventListener);
-
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('woky:tables-updated', onCustom as EventListener);
@@ -168,22 +158,19 @@ const ReservationsPage = () => {
   }, []);
   const activeTables = useMemo(() => tables.filter(t => t.active).sort((a,b)=>a.number-b.number), [tables]);
 
-  /** Reservas (persistentes) **/
+  /** Reservas **/
   const [reservations, setReservationsState] = useState<Reservation[]>([]);
   useEffect(() => {
     const load = () => setReservationsState(getReservations());
     load();
-
     const onStorage = (e: StorageEvent) => { if (e.key === LS_RESERVATIONS) load(); };
     const onCustom = () => load();
     const onFocus = () => load();
     const onVisibility = () => { if (!document.hidden) load(); };
-
     window.addEventListener('storage', onStorage);
     window.addEventListener('woky:reservations-updated', onCustom as EventListener);
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
-
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('woky:reservations-updated', onCustom as EventListener);
@@ -195,13 +182,10 @@ const ReservationsPage = () => {
   /** Filtros / búsqueda **/
   const [reservationFilter, setReservationFilter] = useState<'all' | 'today' | 'upcoming' | 'pending'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Solo mostrar RESERVAS de esta sesión (las “nuevas que voy creando ahora”)
   const onlySessionReservations = useMemo(
     () => reservations.filter(r => r.sessionId === sessionId),
     [reservations, sessionId]
   );
-
   const filteredReservations = onlySessionReservations.filter(r => {
     const today = todayStr();
     const matchFilter =
@@ -239,7 +223,6 @@ const ReservationsPage = () => {
     notes: ''
   });
 
-  /** Guardar nueva reserva (persistente + señales) **/
   const handleSaveReservation = () => {
     if (!form.name.trim()) return showToast('error', 'Ingresa el nombre del cliente');
     if (!form.phone.trim()) return showToast('error', 'Ingresa el teléfono de contacto');
@@ -261,16 +244,13 @@ const ReservationsPage = () => {
       tableNumber: sel ? sel.number : 0,
       status: sel ? 'confirmed' : 'pending',
       notes: form.notes.trim() || undefined,
-      createdAt: new Date().toISOString(), // <- marca nueva
-      sessionId,                           // <- pertenece a la sesión actual
+      createdAt: new Date().toISOString(),
+      sessionId,
     };
 
-    // Guardar
     const next = [...reservations, newRes];
     setReservationsState(next);
     saveReservations(next);
-
-    // Efecto en Mesas
     reserveTableIfToday(newRes);
 
     showToast('success', 'Reservación creada');
@@ -278,7 +258,7 @@ const ReservationsPage = () => {
     resetForm();
   };
 
-  /** Acciones por tarjeta **/
+  /** Acciones tarjeta **/
   const confirmReservation = (res: Reservation) => {
     const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'confirmed' as const }) : r);
     setReservationsState(next);
@@ -286,7 +266,6 @@ const ReservationsPage = () => {
     reserveTableIfToday({ ...res, status: 'confirmed' });
     showToast('success', 'Reservación confirmada');
   };
-
   const cancelReservation = (res: Reservation) => {
     const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'cancelled' }) : r);
     setReservationsState(next);
@@ -294,12 +273,10 @@ const ReservationsPage = () => {
     freeIfReservedToday(res);
     showToast('info', 'Reservación cancelada');
   };
-
   const registerArrival = (res: Reservation) => {
     const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'completed' }) : r);
     setReservationsState(next);
     saveReservations(next);
-
     if (res.tableId) {
       occupyTableForArrival(res.tableId, res.name);
       showToast('success', `Cliente registrado en mesa ${res.tableNumber}`);
@@ -308,11 +285,11 @@ const ReservationsPage = () => {
     }
   };
 
-  /** Helpers UI **/
+  /** UI helpers **/
   const tableLabel = (t: TableItem) =>
     `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${t.alias ? ` · ${t.alias}` : ''}`;
 
-  /** Render **/
+  /** ===== Render ===== **/
   return (
     <div className="space-y-4">
       <div className="bg-gradient-to-r from-blue-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
@@ -351,7 +328,7 @@ const ReservationsPage = () => {
       </div>
 
       {/* Búsqueda */}
-      <div className="relative w-full mb-4">
+      <div className="relative w-full mb-2">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <SearchIcon size={18} className="text-gray-400" />
         </div>
@@ -361,15 +338,20 @@ const ReservationsPage = () => {
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
+          aria-label="Buscar reservaciones"
         />
         {searchTerm && (
-          <button onClick={() => setSearchTerm('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+          <button
+            onClick={() => setSearchTerm('')}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            aria-label="Limpiar búsqueda"
+          >
             <XIcon size={16} />
           </button>
         )}
       </div>
 
-      {/* Filtros + CTA */}
+      {/* Filtros + CTA (CTA solo desktop/tablet) */}
       <div className="flex flex-wrap justify-between items-center mb-4">
         <div className="flex flex-nowrap overflow-x-auto space-x-2">
           <button className={softBtn(reservationFilter === 'all' ? 'blue' : 'gray')} onClick={() => setReservationFilter('all')}>Todas</button>
@@ -377,7 +359,10 @@ const ReservationsPage = () => {
           <button className={softBtn(reservationFilter === 'upcoming' ? 'amber' : 'gray')} onClick={() => setReservationFilter('upcoming')}>Próximas</button>
           <button className={softBtn(reservationFilter === 'pending' ? 'red' : 'gray')} onClick={() => setReservationFilter('pending')}>Pendientes</button>
         </div>
-        <button className={`${ctaGrad()} inline-flex items-center whitespace-nowrap`} onClick={() => { setShowReservationModal(true); }}>
+        <button
+          className={`${ctaGrad()} hidden md:inline-flex items-center whitespace-nowrap`}
+          onClick={() => { setShowReservationModal(true); }}
+        >
           <PlusIcon size={16} className="mr-1" />
           Nueva reservación
         </button>
@@ -465,13 +450,43 @@ const ReservationsPage = () => {
         )}
       </div>
 
+      {/* Espaciador para scroll final */}
+      <div className="h-24 md:hidden" aria-hidden />
+
+      {/* ===== BARRA STICKY EN MOBILE (full-width) — SIEMPRE POR DEBAJO DEL MENÚ DE 3 PUNTOS ===== */}
+      <div
+        className="fixed md:hidden left-0 right-0 z-[1] bg-white/90 backdrop-blur border-t border-gray-200 px-4 pointer-events-none"
+        style={{
+          // Queda a lo largo y por ENCIMA visualmente del contenido,
+          // pero por DEBAJO del menú inferior y su dropdown (que usan z mayores).
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)'
+        }}
+        role="region"
+        aria-label="Acciones de reservaciones"
+      >
+        <div className="py-2">
+          <button
+            className={`${ctaGrad()} w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-base font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pointer-events-auto`}
+            onClick={() => setShowReservationModal(true)}
+            aria-label="Crear nueva reservación"
+          >
+            <PlusIcon size={18} className="mr-2" />
+            Nueva reservación
+          </button>
+        </div>
+      </div>
+
       {/* Modal Nueva reservación */}
       {showReservationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-lg">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-lg font-semibold">Nueva reservación</h3>
-              <button className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100" onClick={() => { setShowReservationModal(false); }}>
+              <button
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onClick={() => { setShowReservationModal(false); }}
+                aria-label="Cerrar modal de nueva reservación"
+              >
                 <XIcon size={20} />
               </button>
             </div>
