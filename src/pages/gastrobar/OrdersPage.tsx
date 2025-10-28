@@ -1141,15 +1141,12 @@ const OrdersPage: React.FC = () => {
               {/* Barra superior */}
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3">
                 <div className="flex items-center gap-2">
+                  {/* ⛔ Se elimina el botón azul "← Categorías".
+                      Mostramos solo una etiqueta discreta (o el nombre de la categoría activa). */}
                   {selectedCategory ? (
-                    <button
-                      onClick={() => setSelectedCategory('')}
-                      className={softBtn('indigo')}
-                      aria-label="Volver a categorías"
-                    >
-                      <ArrowLeftIcon size={16} className="mr-1" />
-                      Categorías
-                    </button>
+                    <span className="text-sm font-medium text-gray-700">
+                      {(menuCategories.find((c) => c.id === selectedCategory)?.name as string) || 'Categoría'}
+                    </span>
                   ) : (
                     <span className="text-sm font-medium text-gray-700">Elige una categoría</span>
                   )}
