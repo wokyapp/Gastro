@@ -1,8 +1,17 @@
-// src/pages/ReservationsPage.tsx
+// src/pages/gastrobar/ReservationsPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
-  CalendarIcon, UserIcon, CheckIcon, XIcon, PlusIcon, SearchIcon, UserSearchIcon, TableIcon, MapPinIcon, UsersIcon
+  CalendarIcon,
+  UserIcon,
+  CheckIcon,
+  XIcon,
+  PlusIcon,
+  SearchIcon,
+  UserSearchIcon,
+  TableIcon,
+  MapPinIcon,
+  UsersIcon,
 } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -20,7 +29,7 @@ type TableItem = {
   zone?: string;
   capacity?: number;
   active: boolean;
-  status?: 'libre'|'ocupada'|'reservada'|'fuera_de_servicio';
+  status?: 'libre' | 'ocupada' | 'reservada' | 'fuera_de_servicio';
   createdAt?: string;
 };
 
@@ -29,8 +38,8 @@ type Reservation = {
   name: string;
   phone: string;
   identification?: string;
-  date: string;   // YYYY-MM-DD
-  time: string;   // HH:mm
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
   guests: number;
   tableId: string;
   tableNumber: number;
@@ -48,7 +57,7 @@ type Runtime = {
   items?: { id: number | string; name: string; price: number; quantity: number }[];
   itemsCount?: number;
   total?: number;
-  kitchenStatus?: 'new'|'preparing'|'ready'|'delivered';
+  kitchenStatus?: 'new' | 'preparing' | 'ready' | 'delivered';
   occupiedSince?: string;
   deliveredAt?: string;
 };
@@ -59,39 +68,63 @@ const isToday = (yyyy_mm_dd: string) => yyyy_mm_dd === todayStr();
 
 /** ===================== Helpers LS ===================== **/
 const getTables = (): TableItem[] => {
-  try { return JSON.parse(localStorage.getItem(LS_TABLES) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_TABLES) || '[]');
+  } catch {
+    return [];
+  }
 };
 const setTables = (list: TableItem[]) => {
   const payload = JSON.stringify(list);
   localStorage.setItem(LS_TABLES, payload);
-  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_TABLES, newValue: payload })); } catch {}
-  try { window.dispatchEvent(new CustomEvent('woky:tables-updated')); } catch {}
+  try {
+    window.dispatchEvent(new StorageEvent('storage', { key: LS_TABLES, newValue: payload }));
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('woky:tables-updated'));
+  } catch {}
 };
 
 const getReservations = (): Reservation[] => {
-  try { return JSON.parse(localStorage.getItem(LS_RESERVATIONS) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_RESERVATIONS) || '[]');
+  } catch {
+    return [];
+  }
 };
 const saveReservations = (list: Reservation[]) => {
   const payload = JSON.stringify(list);
   localStorage.setItem(LS_RESERVATIONS, payload);
-  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_RESERVATIONS, newValue: payload })); } catch {}
-  try { window.dispatchEvent(new CustomEvent('woky:reservations-updated')); } catch {}
+  try {
+    window.dispatchEvent(new StorageEvent('storage', { key: LS_RESERVATIONS, newValue: payload }));
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('woky:reservations-updated'));
+  } catch {}
 };
 
 const getRuntime = (): Record<string, Runtime> => {
-  try { return JSON.parse(localStorage.getItem(LS_RUNTIME) || '{}'); } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_RUNTIME) || '{}');
+  } catch {
+    return {};
+  }
 };
 const setRuntime = (rt: Record<string, Runtime>) => {
   const payload = JSON.stringify(rt);
   localStorage.setItem(LS_RUNTIME, payload);
-  try { window.dispatchEvent(new StorageEvent('storage', { key: LS_RUNTIME, newValue: payload })); } catch {}
-  try { window.dispatchEvent(new CustomEvent('woky:tables-updated')); } catch {}
+  try {
+    window.dispatchEvent(new StorageEvent('storage', { key: LS_RUNTIME, newValue: payload }));
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('woky:tables-updated'));
+  } catch {}
 };
 
 /** ===================== Side-effects Mesas/Runtime desde Reservas ===================== **/
 const setTableStatus = (tableId: string, status: TableItem['status']) => {
   const tables = getTables();
-  const idx = tables.findIndex(t => String(t.id) === String(tableId));
+  const idx = tables.findIndex((t) => String(t.id) === String(tableId));
   if (idx >= 0) {
     tables[idx] = { ...tables[idx], status };
     setTables(tables);
@@ -105,7 +138,7 @@ const reserveTableIfToday = (res: Reservation) => {
 const freeIfReservedToday = (res: Reservation) => {
   if (res.tableId && isToday(res.date)) {
     const tables = getTables();
-    const idx = tables.findIndex(t => String(t.id) === String(res.tableId));
+    const idx = tables.findIndex((t) => String(t.id) === String(res.tableId));
     if (idx >= 0 && tables[idx].status === 'reservada') {
       tables[idx] = { ...tables[idx], status: 'libre' };
       setTables(tables);
@@ -121,15 +154,22 @@ const occupyTableForArrival = (tableId: string, customerName: string) => {
     ...prev,
     customerName,
     occupiedSince: prev.occupiedSince || new Date().toISOString(),
-    kitchenStatus: prev.kitchenStatus || undefined
+    kitchenStatus: prev.kitchenStatus || undefined,
   };
   setRuntime(rt);
 };
 
 /** ===================== Página ===================== **/
-const ReservationsPage = () => {
+const ReservationsPage: React.FC = () => {
   const { showToast } = useToast();
-  const { softBtn, ctaGrad } = useOutletContext<any>();
+  // Opcionalmente podemos recibir estilos desde el layout. Si no existen, usamos defaults.
+  const outletCtx = useOutletContext<any>();
+  const softBtn =
+    outletCtx?.softBtn ||
+    'inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
+  const ctaGrad =
+    outletCtx?.ctaGrad ||
+    'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
 
   /** Sesión de reservas **/
   const [sessionId, setSessionId] = useState<string>('');
@@ -145,9 +185,11 @@ const ReservationsPage = () => {
   /** Mesas **/
   const [tables, setTablesState] = useState<TableItem[]>([]);
   useEffect(() => {
-    const loadTables = () => setTablesState(getTables().sort((a,b)=>a.number-b.number));
+    const loadTables = () => setTablesState(getTables().sort((a, b) => a.number - b.number));
     loadTables();
-    const onStorage = (e: StorageEvent) => { if (e.key === LS_TABLES) loadTables(); };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_TABLES) loadTables();
+    };
     const onCustom = () => loadTables();
     window.addEventListener('storage', onStorage);
     window.addEventListener('woky:tables-updated', onCustom as EventListener);
@@ -156,17 +198,24 @@ const ReservationsPage = () => {
       window.removeEventListener('woky:tables-updated', onCustom as EventListener);
     };
   }, []);
-  const activeTables = useMemo(() => tables.filter(t => t.active).sort((a,b)=>a.number-b.number), [tables]);
+  const activeTables = useMemo(
+    () => tables.filter((t) => t.active).sort((a, b) => a.number - b.number),
+    [tables],
+  );
 
   /** Reservas **/
   const [reservations, setReservationsState] = useState<Reservation[]>([]);
   useEffect(() => {
     const load = () => setReservationsState(getReservations());
     load();
-    const onStorage = (e: StorageEvent) => { if (e.key === LS_RESERVATIONS) load(); };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_RESERVATIONS) load();
+    };
     const onCustom = () => load();
     const onFocus = () => load();
-    const onVisibility = () => { if (!document.hidden) load(); };
+    const onVisibility = () => {
+      if (!document.hidden) load();
+    };
     window.addEventListener('storage', onStorage);
     window.addEventListener('woky:reservations-updated', onCustom as EventListener);
     window.addEventListener('focus', onFocus);
@@ -183,22 +232,22 @@ const ReservationsPage = () => {
   const [reservationFilter, setReservationFilter] = useState<'all' | 'today' | 'upcoming' | 'pending'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const onlySessionReservations = useMemo(
-    () => reservations.filter(r => r.sessionId === sessionId),
-    [reservations, sessionId]
+    () => reservations.filter((r) => r.sessionId === sessionId),
+    [reservations, sessionId],
   );
-  const filteredReservations = onlySessionReservations.filter(r => {
+  const filteredReservations = useMemo(() => {
     const today = todayStr();
-    const matchFilter =
-      reservationFilter === 'all' ||
-      (reservationFilter === 'today' && r.date === today) ||
-      (reservationFilter === 'upcoming' && r.date > today) ||
-      (reservationFilter === 'pending' && r.status === 'pending');
-    const matchSearch =
-      !searchTerm ||
-      r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.identification || '').toLowerCase().includes(searchTerm.toLowerCase());
-    return matchFilter && matchSearch;
-  });
+    return onlySessionReservations.filter((r) => {
+      const matchFilter =
+        reservationFilter === 'all' ||
+        (reservationFilter === 'today' && r.date === today) ||
+        (reservationFilter === 'upcoming' && r.date > today) ||
+        (reservationFilter === 'pending' && r.status === 'pending');
+      const haystack = (r.name + ' ' + (r.identification || '')).toLowerCase();
+      const matchSearch = !searchTerm || haystack.includes(searchTerm.toLowerCase());
+      return matchFilter && matchSearch;
+    });
+  }, [onlySessionReservations, reservationFilter, searchTerm]);
 
   /** Modal / Form **/
   const [showReservationModal, setShowReservationModal] = useState(false);
@@ -210,18 +259,19 @@ const ReservationsPage = () => {
     time: '19:00',
     guests: 2,
     tableId: '',
-    notes: ''
+    notes: '',
   });
-  const resetForm = () => setForm({
-    name: '',
-    phone: '',
-    identification: '',
-    date: todayStr(),
-    time: '19:00',
-    guests: 2,
-    tableId: '',
-    notes: ''
-  });
+  const resetForm = () =>
+    setForm({
+      name: '',
+      phone: '',
+      identification: '',
+      date: todayStr(),
+      time: '19:00',
+      guests: 2,
+      tableId: '',
+      notes: '',
+    });
 
   const handleSaveReservation = () => {
     if (!form.name.trim()) return showToast('error', 'Ingresa el nombre del cliente');
@@ -230,7 +280,7 @@ const ReservationsPage = () => {
     if (!form.time) return showToast('error', 'Selecciona la hora');
     if (form.guests <= 0) return showToast('error', 'La cantidad de personas debe ser mayor a 0');
 
-    const sel = form.tableId ? tables.find(t => String(t.id) === String(form.tableId)) : undefined;
+    const sel = form.tableId ? tables.find((t) => String(t.id) === String(form.tableId)) : undefined;
 
     const newRes: Reservation = {
       id: `r${Date.now()}`,
@@ -260,21 +310,21 @@ const ReservationsPage = () => {
 
   /** Acciones tarjeta **/
   const confirmReservation = (res: Reservation) => {
-    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'confirmed' as const }) : r);
+    const next = reservations.map((r) => (r.id === res.id ? { ...r, status: 'confirmed' as const } : r));
     setReservationsState(next);
     saveReservations(next);
     reserveTableIfToday({ ...res, status: 'confirmed' });
     showToast('success', 'Reservación confirmada');
   };
   const cancelReservation = (res: Reservation) => {
-    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'cancelled' }) : r);
+    const next = reservations.map((r) => (r.id === res.id ? { ...r, status: 'cancelled' } : r));
     setReservationsState(next);
     saveReservations(next);
     freeIfReservedToday(res);
     showToast('info', 'Reservación cancelada');
   };
   const registerArrival = (res: Reservation) => {
-    const next = reservations.map(r => r.id === res.id ? ({ ...r, status: 'completed' }) : r);
+    const next = reservations.map((r) => (r.id === res.id ? { ...r, status: 'completed' } : r));
     setReservationsState(next);
     saveReservations(next);
     if (res.tableId) {
@@ -287,14 +337,16 @@ const ReservationsPage = () => {
 
   /** UI helpers **/
   const tableLabel = (t: TableItem) =>
-    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${t.alias ? ` · ${t.alias}` : ''}`;
+    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${
+      t.alias ? ` · ${t.alias}` : ''
+    }`;
 
   /** ===== Render ===== **/
   return (
     <div className="space-y-4">
-      <div className="bg-gradient-to-r from-blue-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
-        <div className="bg-white/60 p-3 rounded-2xl">
-          <h1 className="text-2xl font-bold text-gray-800">Reservaciones</h1>
+      <div className="bg-gradient-to-r from-indigo-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
+        <div className="bg-white/70 backdrop-blur p-3 rounded-2xl">
+          <h1 className="text-2xl font-bold text-gray-900">Reservaciones</h1>
           <p className="text-sm text-gray-600">Solo se muestran las reservaciones creadas en esta sesión</p>
         </div>
       </div>
@@ -302,23 +354,33 @@ const ReservationsPage = () => {
       {/* Mesas activas (vista rápida) */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3">
         <div className="flex items-center mb-2 text-gray-700">
-          <TableIcon size={18} className="mr-2 text-blue-600" />
+          <TableIcon size={18} className="mr-2 text-indigo-600" aria-hidden />
           <span className="font-medium">Mesas (desde Configuración)</span>
           <span className="ml-2 text-xs text-gray-500">
-            Activas: {useMemo(() => tables.filter(t => t.active).length, [tables])}
+            Activas: {useMemo(() => tables.filter((t) => t.active).length, [tables])}
           </span>
         </div>
         {activeTables.length === 0 ? (
           <p className="text-sm text-gray-500">No hay mesas creadas/activas aún.</p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {activeTables.map(t => (
-              <span key={t.id} className="inline-flex items-center text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700" title={tableLabel(t)}>
+            {activeTables.map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700"
+                title={tableLabel(t)}
+              >
                 <span className="mr-1 font-medium">#{t.number}</span>
-                {t.zone && <span className="flex items-center mr-1 text-gray-500"><MapPinIcon size={12} className="mr-0.5"/>{t.zone}</span>}
+                {t.zone && (
+                  <span className="flex items-center mr-1 text-gray-500">
+                    <MapPinIcon size={12} className="mr-0.5" aria-hidden />
+                    {t.zone}
+                  </span>
+                )}
                 {typeof t.capacity === 'number' && (
                   <span className="flex items-center text-gray-500">
-                    <UsersIcon size={12} className="mr-0.5"/>{t.capacity}
+                    <UsersIcon size={12} className="mr-0.5" aria-hidden />
+                    {t.capacity}
                   </span>
                 )}
               </span>
@@ -327,272 +389,307 @@ const ReservationsPage = () => {
         )}
       </div>
 
-      {/* Búsqueda */}
-      <div className="relative w-full mb-2">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <SearchIcon size={18} className="text-gray-400" />
+      {/* Filtros + Búsqueda */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="relative w-full">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <SearchIcon size={18} className="text-gray-400" aria-hidden />
+          </div>
+          <input
+            type="text"
+            placeholder="Buscar por nombre o identificación…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-xl focus-visible:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400 text-sm md:text-base"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Buscar por nombre o identificación..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="pl-10 pr-4 py-2.5 w-full border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
-          aria-label="Buscar reservaciones"
-        />
-        {searchTerm && (
+
+        <div className="flex gap-2">
           <button
-            onClick={() => setSearchTerm('')}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-            aria-label="Limpiar búsqueda"
+            type="button"
+            onClick={() => setReservationFilter('all')}
+            className={`${softBtn} w-full ${reservationFilter === 'all' ? 'ring-2 ring-indigo-500' : ''}`}
+            aria-pressed={reservationFilter === 'all'}
           >
-            <XIcon size={16} />
+            <CalendarIcon size={16} className="mr-2" aria-hidden />
+            Todas
           </button>
-        )}
+          <button
+            type="button"
+            onClick={() => setReservationFilter('today')}
+            className={`${softBtn} w-full ${reservationFilter === 'today' ? 'ring-2 ring-indigo-500' : ''}`}
+            aria-pressed={reservationFilter === 'today'}
+          >
+            <CalendarIcon size={16} className="mr-2" aria-hidden />
+            Hoy
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setReservationFilter('upcoming')}
+            className={`${softBtn} w-full ${reservationFilter === 'upcoming' ? 'ring-2 ring-indigo-500' : ''}`}
+            aria-pressed={reservationFilter === 'upcoming'}
+          >
+            <CalendarIcon size={16} className="mr-2" aria-hidden />
+            Próximas
+          </button>
+          <button
+            type="button"
+            onClick={() => setReservationFilter('pending')}
+            className={`${softBtn} w-full ${reservationFilter === 'pending' ? 'ring-2 ring-indigo-500' : ''}`}
+            aria-pressed={reservationFilter === 'pending'}
+          >
+            <UserSearchIcon size={16} className="mr-2" aria-hidden />
+            Pendientes
+          </button>
+        </div>
       </div>
 
-      {/* Filtros + CTA (CTA solo desktop/tablet) */}
-      <div className="flex flex-wrap justify-between items-center mb-4">
-        <div className="flex flex-nowrap overflow-x-auto space-x-2">
-          <button className={softBtn(reservationFilter === 'all' ? 'blue' : 'gray')} onClick={() => setReservationFilter('all')}>Todas</button>
-          <button className={softBtn(reservationFilter === 'today' ? 'green' : 'gray')} onClick={() => setReservationFilter('today')}>Hoy</button>
-          <button className={softBtn(reservationFilter === 'upcoming' ? 'amber' : 'gray')} onClick={() => setReservationFilter('upcoming')}>Próximas</button>
-          <button className={softBtn(reservationFilter === 'pending' ? 'red' : 'gray')} onClick={() => setReservationFilter('pending')}>Pendientes</button>
-        </div>
-        <button
-          className={`${ctaGrad()} hidden md:inline-flex items-center whitespace-nowrap`}
-          onClick={() => { setShowReservationModal(true); }}
-        >
-          <PlusIcon size={16} className="mr-1" />
+      {/* CTA crear */}
+      <div className="flex justify-end">
+        <button type="button" className={ctaGrad} onClick={() => setShowReservationModal(true)}>
+          <PlusIcon size={16} className="mr-2" aria-hidden />
           Nueva reservación
         </button>
       </div>
 
-      {/* Lista (SOLO de esta sesión) */}
-      <div className="space-y-4">
-        {filteredReservations.map(res => (
-          <div key={res.id} className="border border-gray-100 rounded-2xl p-4 hover:border-blue-300 transition-colors bg-white shadow-sm">
-            <div className="flex justify-between items-start">
-              <div className="flex items-start">
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-2 rounded-full mr-3 text-white shadow">
-                  <UserIcon size={18} />
-                </div>
-                <div>
-                  <h3 className="font-medium">{res.name}</h3>
-                  <p className="text-sm text-gray-600">{res.phone}</p>
-                  {res.identification && <p className="text-sm text-gray-600">ID: {res.identification}</p>}
-                  <div className="flex items-center mt-1 text-sm text-gray-500">
-                    <CalendarIcon size={14} className="mr-1" />
-                    {new Date(res.date).toLocaleDateString('es-CO')} - {res.time}
-                  </div>
-                  <div className="flex items-center mt-1 text-sm">
-                    <UserIcon size={14} className="mr-1 text-gray-500" />
-                    <span className="text-gray-500">{res.guests} personas</span>
-                    {res.tableNumber > 0 && (
-                      <>
-                        <span className="mx-1 text-gray-500">•</span>
-                        <span className="text-gray-500">Mesa {res.tableNumber}</span>
-                      </>
-                    )}
-                  </div>
-                  {res.notes && <p className="text-xs text-gray-500 mt-1 italic">{res.notes}</p>}
-                </div>
-              </div>
-              <span className={`
-                px-2 py-0.5 rounded-full text-xs font-medium
-                ${res.status === 'confirmed' ? 'bg-green-100 text-green-800' : ''}
-                ${res.status === 'pending' ? 'bg-amber-100 text-amber-800' : ''}
-                ${res.status === 'cancelled' ? 'bg-red-100 text-red-800' : ''}
-                ${res.status === 'completed' ? 'bg-blue-100 text-blue-800' : ''}
-              `}>
-                {res.status === 'confirmed' ? 'Confirmada' : ''}
-                {res.status === 'pending' ? 'Pendiente' : ''}
-                {res.status === 'cancelled' ? 'Cancelada' : ''}
-                {res.status === 'completed' ? 'Completada' : ''}
-              </span>
-            </div>
-
-            {/* Acciones */}
-            <div className="mt-3 flex flex-nowrap justify-end gap-2 overflow-x-auto">
-              {res.status === 'pending' && (
-                <button className={`${softBtn('green')} inline-flex items-center whitespace-nowrap`} onClick={() => confirmReservation(res)}>
-                  <CheckIcon size={16} className="mr-1" /> Confirmar
-                </button>
-              )}
-              {(res.status === 'confirmed' || res.status === 'pending') && (
-                <button className={`${softBtn('red')} inline-flex items-center whitespace-nowrap`} onClick={() => cancelReservation(res)}>
-                  <XIcon size={16} className="mr-1" /> Cancelar
-                </button>
-              )}
-              {res.status === 'confirmed' && isToday(res.date) && (
-                <button className={`${softBtn('blue')} inline-flex items-center whitespace-nowrap`} onClick={() => registerArrival(res)}>
-                  <UserIcon size={16} className="mr-1" /> Registrar llegada
-                </button>
-              )}
-            </div>
+      {/* Lista */}
+      <div className="space-y-3">
+        {filteredReservations.length === 0 ? (
+          <div
+            role="status"
+            className="rounded-2xl border border-dashed border-gray-300 p-6 text-center text-gray-600"
+          >
+            <p className="font-medium">Sin resultados</p>
+            <p className="text-sm text-gray-500">Crea una nueva reservación o ajusta los filtros.</p>
           </div>
-        ))}
+        ) : (
+          filteredReservations
+            .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+            .map((r) => (
+              <article
+                key={r.id}
+                className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 focus-within:ring-2 focus-within:ring-indigo-500"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <UserIcon size={16} className="text-gray-500" aria-hidden />
+                      <h3 className="font-semibold text-gray-900 truncate">{r.name}</h3>
+                      {r.identification && (
+                        <span className="text-xs text-gray-500 truncate">· {r.identification}</span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                      <div className="inline-flex items-center">
+                        <CalendarIcon size={14} className="mr-1" aria-hidden />
+                        {r.date} {r.time}
+                      </div>
+                      <div className="inline-flex items-center">
+                        <UsersIcon size={14} className="mr-1" aria-hidden />
+                        {r.guests} {r.guests === 1 ? 'persona' : 'personas'}
+                      </div>
+                      {r.tableNumber ? (
+                        <div className="inline-flex items-center">
+                          <TableIcon size={14} className="mr-1" aria-hidden />
+                          Mesa {r.tableNumber}
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center text-amber-600">
+                          <TableIcon size={14} className="mr-1" aria-hidden />
+                          Sin mesa
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-        {filteredReservations.length === 0 && (
-          <div className="text-center py-8 bg-white rounded-2xl shadow-sm border border-gray-100">
-            {searchTerm ? (
-              <>
-                <UserSearchIcon size={40} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-gray-500">No se encontraron reservaciones que coincidan con “{searchTerm}”.</p>
-              </>
-            ) : (
-              <>
-                <CalendarIcon size={40} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-gray-500">Aquí verás solo las reservaciones nuevas creadas en esta sesión.</p>
-              </>
-            )}
-          </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
+                      r.status === 'confirmed'
+                        ? 'bg-green-50 text-green-700 ring-1 ring-green-200'
+                        : r.status === 'pending'
+                        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                        : r.status === 'cancelled'
+                        ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                        : 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200'
+                    }`}
+                  >
+                    {r.status === 'confirmed'
+                      ? 'Confirmada'
+                      : r.status === 'pending'
+                      ? 'Pendiente'
+                      : r.status === 'cancelled'
+                      ? 'Cancelada'
+                      : 'Completada'}
+                  </span>
+                </div>
+
+                {r.notes && <p className="mt-2 text-sm text-gray-600">{r.notes}</p>}
+
+                <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                  {r.status !== 'cancelled' && r.status !== 'completed' && (
+                    <button
+                      type="button"
+                      className={softBtn}
+                      onClick={() => confirmReservation(r)}
+                      aria-label="Confirmar reservación"
+                    >
+                      <CheckIcon size={16} className="mr-2 text-green-600" aria-hidden />
+                      Confirmar
+                    </button>
+                  )}
+                  {r.status !== 'cancelled' && (
+                    <button
+                      type="button"
+                      className={softBtn}
+                      onClick={() => cancelReservation(r)}
+                      aria-label="Cancelar reservación"
+                    >
+                      <XIcon size={16} className="mr-2 text-red-600" aria-hidden />
+                      Cancelar
+                    </button>
+                  )}
+                  {r.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      className={softBtn}
+                      onClick={() => registerArrival(r)}
+                      aria-label="Registrar llegada"
+                    >
+                      <CheckIcon size={16} className="mr-2 text-indigo-600" aria-hidden />
+                      Llegó
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))
         )}
       </div>
 
-      {/* Espaciador para scroll final */}
-      <div className="h-24 md:hidden" aria-hidden />
-
-      {/* ===== BARRA STICKY EN MOBILE (full-width) — SIEMPRE POR DEBAJO DEL MENÚ DE 3 PUNTOS ===== */}
-      <div
-        className="fixed md:hidden left-0 right-0 z-[1] bg-white/90 backdrop-blur border-t border-gray-200 px-4 pointer-events-none"
-        style={{
-          // Queda a lo largo y por ENCIMA visualmente del contenido,
-          // pero por DEBAJO del menú inferior y su dropdown (que usan z mayores).
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)'
-        }}
-        role="region"
-        aria-label="Acciones de reservaciones"
-      >
-        <div className="py-2">
-          <button
-            className={`${ctaGrad()} w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-base font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pointer-events-auto`}
-            onClick={() => setShowReservationModal(true)}
-            aria-label="Crear nueva reservación"
-          >
-            <PlusIcon size={18} className="mr-2" />
-            Nueva reservación
-          </button>
-        </div>
-      </div>
-
-      {/* Modal Nueva reservación */}
+      {/* Modal crear (Sheet simple para mobile) */}
       {showReservationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-lg">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Nueva reservación</h3>
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6"
+        >
+          <div className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold">Nueva reservación</h2>
               <button
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                onClick={() => { setShowReservationModal(false); }}
-                aria-label="Cerrar modal de nueva reservación"
+                type="button"
+                className="p-2 rounded-xl hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                onClick={() => setShowReservationModal(false)}
+                aria-label="Cerrar"
               >
-                <XIcon size={20} />
+                <XIcon size={18} />
               </button>
             </div>
 
-            <div className="p-4">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del cliente</label>
+            <div className="p-4 space-y-3">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Nombre</span>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Teléfono</span>
+                  <input
+                    type="tel"
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={form.phone}
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Identificación (opcional)</span>
                   <input
                     type="text"
-                    value={form.name}
-                    onChange={e=>setForm({...form, name: e.target.value})}
-                    className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Nombre completo"
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={form.identification}
+                    onChange={(e) => setForm((f) => ({ ...f, identification: e.target.value }))}
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
-                    <input
-                      type="tel"
-                      value={form.phone}
-                      onChange={e=>setForm({...form, phone: e.target.value})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Número de contacto"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Identificación</label>
-                    <input
-                      type="text"
-                      value={form.identification}
-                      onChange={e=>setForm({...form, identification: e.target.value})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Cédula o ID"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-                    <input
-                      type="date"
-                      value={form.date}
-                      onChange={e=>setForm({...form, date: e.target.value})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
-                    <input
-                      type="time"
-                      value={form.time}
-                      onChange={e=>setForm({...form, time: e.target.value})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Personas</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={form.guests}
-                      onChange={e=>setForm({...form, guests: Math.max(1, Number(e.target.value||1))})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Cantidad"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Mesa</label>
-                    <select
-                      value={form.tableId}
-                      onChange={e=>setForm({...form, tableId: e.target.value})}
-                      className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Asignar después</option>
-                      {activeTables.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {tableLabel(t)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
-                  <textarea
-                    value={form.notes}
-                    onChange={e=>setForm({...form, notes: e.target.value})}
-                    className="block w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Preferencias o solicitudes especiales"
-                    rows={2}
-                  />
-                </div>
+                </label>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Fecha</span>
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={form.date}
+                    onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Hora</span>
+                  <input
+                    type="time"
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={form.time}
+                    onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-gray-700">Personas</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={form.guests}
+                    onChange={(e) => setForm((f) => ({ ...f, guests: Number(e.target.value) }))}
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Mesa (opcional)</span>
+                <select
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={form.tableId}
+                  onChange={(e) => setForm((f) => ({ ...f, tableId: e.target.value }))}
+                >
+                  <option value="">— Sin mesa —</option>
+                  {activeTables.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {tableLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">Notas (opcional)</span>
+                <textarea
+                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 focus-visible:outline-none focus:ring-2 focus:ring-indigo-500"
+                  rows={3}
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                />
+              </label>
             </div>
 
-            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
-              <button className={`${softBtn('gray')} inline-flex items-center whitespace-nowrap`} onClick={() => setShowReservationModal(false)}>
+            <div className="p-4 border-t flex gap-2 justify-end">
+              <button
+                type="button"
+                className={softBtn}
+                onClick={() => setShowReservationModal(false)}
+              >
+                <XIcon size={16} className="mr-2" aria-hidden />
                 Cancelar
               </button>
-              <button className={`${ctaGrad()} inline-flex items-center whitespace-nowrap`} onClick={handleSaveReservation}>
-                <CheckIcon size={16} className="mr-1" />
-                Guardar reservación
+              <button type="button" className={ctaGrad} onClick={handleSaveReservation}>
+                <CheckIcon size={16} className="mr-2" aria-hidden />
+                Guardar
               </button>
             </div>
           </div>

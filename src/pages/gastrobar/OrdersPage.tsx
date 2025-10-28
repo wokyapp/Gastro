@@ -1,4 +1,4 @@
-// src/pages/OrdersPage.tsx
+// src/pages/gastrobar/OrdersPage.tsx
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -11,11 +11,9 @@ import {
   TagIcon,
   LayersIcon,
   ChevronRightIcon,
-  ChevronDownIcon,
+  ArrowLeftIcon,
   ClockIcon,
   PackageIcon,
-  EyeIcon,
-  EyeOffIcon,
   LockIcon,
   UnlockIcon,
 } from 'lucide-react';
@@ -165,13 +163,11 @@ const OrdersPage: React.FC = () => {
 
   const [, setActiveOrders] = useState<Order[]>([]);
   const [menuSearchTerm, setMenuSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>(''); // categorías → productos
   const [selectedType, setSelectedType] = useState('all');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
-  const [existingOrder, setExistingOrder] = useState<Order | null>(null);
+  const [existingOrder] = useState<Order | null>(null);
 
   const [selectedWaiter, setSelectedWaiter] = useState<Waiter | null>(null);
-  const [allCategoriesExpanded, setAllCategoriesExpanded] = useState(true);
 
   // Header bloqueable solo para el nombre del cliente
   const [lockHeaderInfo, setLockHeaderInfo] = useState(false);
@@ -184,7 +180,6 @@ const OrdersPage: React.FC = () => {
    * Bloqueo de edición:
    * - Permitido editar mientras esté "new" o "preparing".
    * - Bloqueado cuando cocina marca "ready" (LISTA).
-   * - Una vez "delivered", se vuelve a permitir agregar una NUEVA orden (mostrando lo entregado).
    */
   const [isEditLocked, setIsEditLocked] = useState(false);
 
@@ -232,6 +227,32 @@ const OrdersPage: React.FC = () => {
     { id: 'cat-6', name: 'Cervezas', type: 'drink', order: 3 },
     { id: 'cat-7', name: 'Vinos', type: 'drink', order: 4 },
   ]);
+
+  // ====== 🎨 Paletas múltiples (variedad determinística por categoría) ======
+  const colorThemes = [
+    { card: 'bg-indigo-50', hover: 'hover:bg-indigo-100', border: 'border-indigo-200', ring: 'focus-visible:ring-indigo-400', text: 'text-indigo-900', badge: 'bg-indigo-100 text-indigo-800', icon: 'text-indigo-600', gradFrom: 'from-indigo-50', gradTo: 'to-blue-50' },
+    { card: 'bg-sky-50',    hover: 'hover:bg-sky-100',    border: 'border-sky-200',    ring: 'focus-visible:ring-sky-400',    text: 'text-sky-900',    badge: 'bg-sky-100 text-sky-800',    icon: 'text-sky-600',    gradFrom: 'from-sky-50',    gradTo: 'to-cyan-50' },
+    { card: 'bg-cyan-50',   hover: 'hover:bg-cyan-100',   border: 'border-cyan-200',   ring: 'focus-visible:ring-cyan-400',   text: 'text-cyan-900',   badge: 'bg-cyan-100 text-cyan-800',   icon: 'text-cyan-600',   gradFrom: 'from-cyan-50',   gradTo: 'to-teal-50' },
+    { card: 'bg-teal-50',   hover: 'hover:bg-teal-100',   border: 'border-teal-200',   ring: 'focus-visible:ring-teal-400',   text: 'text-teal-900',   badge: 'bg-teal-100 text-teal-800',   icon: 'text-teal-600',   gradFrom: 'from-teal-50',   gradTo: 'to-emerald-50' },
+    { card: 'bg-emerald-50',hover: 'hover:bg-emerald-100',border: 'border-emerald-200',ring: 'focus-visible:ring-emerald-400',text: 'text-emerald-900',badge: 'bg-emerald-100 text-emerald-800',icon: 'text-emerald-600',gradFrom: 'from-emerald-50',gradTo: 'to-lime-50' },
+    { card: 'bg-lime-50',   hover: 'hover:bg-lime-100',   border: 'border-lime-200',   ring: 'focus-visible:ring-lime-400',   text: 'text-lime-900',   badge: 'bg-lime-100 text-lime-800',   icon: 'text-lime-600',   gradFrom: 'from-lime-50',   gradTo: 'to-amber-50' },
+    { card: 'bg-amber-50',  hover: 'hover:bg-amber-100',  border: 'border-amber-200',  ring: 'focus-visible:ring-amber-400',  text: 'text-amber-900',  badge: 'bg-amber-100 text-amber-800',  icon: 'text-amber-600',  gradFrom: 'from-amber-50',  gradTo: 'to-yellow-50' },
+    { card: 'bg-orange-50', hover: 'hover:bg-orange-100', border: 'border-orange-200', ring: 'focus-visible:ring-orange-400', text: 'text-orange-900', badge: 'bg-orange-100 text-orange-800', icon: 'text-orange-600', gradFrom: 'from-orange-50', gradTo: 'to-amber-50' },
+    { card: 'bg-rose-50',   hover: 'hover:bg-rose-100',   border: 'border-rose-200',   ring: 'focus-visible:ring-rose-400',   text: 'text-rose-900',   badge: 'bg-rose-100 text-rose-800',   icon: 'text-rose-600',   gradFrom: 'from-rose-50',   gradTo: 'to-pink-50' },
+    { card: 'bg-pink-50',   hover: 'hover:bg-pink-100',   border: 'border-pink-200',   ring: 'focus-visible:ring-pink-400',   text: 'text-pink-900',   badge: 'bg-pink-100 text-pink-800',   icon: 'text-pink-600',   gradFrom: 'from-pink-50',   gradTo: 'to-rose-50' },
+    { card: 'bg-fuchsia-50',hover: 'hover:bg-fuchsia-100',border: 'border-fuchsia-200',ring: 'focus-visible:ring-fuchsia-400',text: 'text-fuchsia-900',badge: 'bg-fuchsia-100 text-fuchsia-800',icon: 'text-fuchsia-600',gradFrom: 'from-fuchsia-50',gradTo: 'to-pink-50' },
+    { card: 'bg-purple-50', hover: 'hover:bg-purple-100', border: 'border-purple-200', ring: 'focus-visible:ring-purple-400', text: 'text-purple-900', badge: 'bg-purple-100 text-purple-800', icon: 'text-purple-600', gradFrom: 'from-purple-50', gradTo: 'to-violet-50' },
+    { card: 'bg-violet-50', hover: 'hover:bg-violet-100', border: 'border-violet-200', ring: 'focus-visible:ring-violet-400', text: 'text-violet-900', badge: 'bg-violet-100 text-violet-800', icon: 'text-violet-600', gradFrom: 'from-violet-50', gradTo: 'to-indigo-50' },
+    { card: 'bg-slate-50',  hover: 'hover:bg-slate-100',  border: 'border-slate-200',  ring: 'focus-visible:ring-slate-400',  text: 'text-slate-900',  badge: 'bg-slate-100 text-slate-800',  icon: 'text-slate-600',  gradFrom: 'from-slate-50',  gradTo: 'to-gray-50' },
+  ] as const;
+
+  const hashIndex = (key: string) => {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+    return Math.abs(h) % colorThemes.length;
+  };
+  const paletteByCategory = (categoryId: string) => colorThemes[hashIndex(categoryId)];
+  const paletteByProduct = (item: MenuItem) => paletteByCategory(item.category);
 
   // Helpers: tablas de configuración
   const loadConfigTables = useCallback((): Table[] => {
@@ -296,7 +317,7 @@ const OrdersPage: React.FC = () => {
 
   // === Cancelar orden de cocina actual y liberar mesa ===
   const cancelKitchenOrderAndFreeTable = (table: Table, kitchenOrderId: string) => {
-    const list = loadKitchen().filter(o => o.id !== kitchenOrderId);
+    const list = loadKitchen().filter((o) => o.id !== kitchenOrderId);
     saveKitchen(list);
 
     const rt = getRuntime();
@@ -334,10 +355,6 @@ const OrdersPage: React.FC = () => {
       ];
       setMenuItems(mockMenu);
 
-      const initialExpanded: Record<string, boolean> = {};
-      menuCategories.forEach((cat) => { initialExpanded[cat.id] = true; });
-      setExpandedCategories(initialExpanded);
-
       if (tableIdParam) {
         const table = baseTables.find((t) => String(t.id) === String(tableIdParam));
         if (table) {
@@ -345,9 +362,8 @@ const OrdersPage: React.FC = () => {
             showToast('error', `${table.name} no está disponible`);
           } else {
             setSelectedTable(table);
-
             if (table.waiter?.name && !selectedWaiter) {
-              const match = waiters.find(w => w.name === table.waiter!.name) || null;
+              const match = waiters.find((w) => w.name === table.waiter!.name) || null;
               setSelectedWaiter(match);
             }
           }
@@ -379,12 +395,14 @@ const OrdersPage: React.FC = () => {
               setLockHeaderInfo(!!locked);
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
 
         try {
           const list = loadKitchen();
           const editable = list.find(
-            (o) => String(o.tableId || '') === String(tableIdParam) && (o.status === 'new' || o.status === 'preparing')
+            (o) => String(o.tableId || '') === String(tableIdParam) && (o.status === 'new' || o.status === 'preparing'),
           );
           if (editable) {
             setCurrentKitchenOrderId(editable.id);
@@ -406,14 +424,16 @@ const OrdersPage: React.FC = () => {
           } else {
             setCurrentKitchenOrderId(null);
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       setLoading(false);
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableIdParam, isNewOrder, loadConfigTables, menuCategories, showToast, waiters.length]);
+  }, [tableIdParam, isNewOrder, loadConfigTables, showToast, waiters.length]);
 
   // Refresca mesas/meseros si cambian en otra pestaña
   useEffect(() => {
@@ -432,16 +452,21 @@ const OrdersPage: React.FC = () => {
               active: true,
             }));
           setWaiters(onlyActiveWaiters);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       if (e.key === LS_KITCHEN && selectedTable) {
         try {
           const list = JSON.parse(e.newValue || '[]');
           const editable = list.find(
-            (o: KitchenOrder) => String(o.tableId || '') === String(selectedTable.id) && (o.status === 'new' || o.status === 'preparing')
+            (o: KitchenOrder) =>
+              String(o.tableId || '') === String(selectedTable.id) && (o.status === 'new' || o.status === 'preparing'),
           );
           setCurrentKitchenOrderId(editable ? editable.id : null);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     };
     window.addEventListener('storage', onStorage);
@@ -458,7 +483,9 @@ const OrdersPage: React.FC = () => {
           const locked = rec && rec.kitchenStatus === 'ready';
           setIsEditLocked(!!locked);
           if (locked) setLockHeaderInfo(true);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     };
     window.addEventListener('storage', onStorage);
@@ -487,43 +514,38 @@ const OrdersPage: React.FC = () => {
     GlassWaterIcon: <GlassWaterIcon size={14} className="mr-1" />,
     CakeIcon: <LayersIcon size={14} className="mr-1" />,
   };
-
   const getIconByName = (iconName: string) => productTypesMap[iconName] ?? <TagIcon size={14} className="mr-1" />;
 
-  const filteredMenuItems = menuItems.filter((item) => {
+  // === Vista categorías → productos con variedad de colores ===
+
+  // Filtro base por tipo y búsqueda
+  const baseFilteredItems = useMemo(() => {
     const q = menuSearchTerm.trim().toLowerCase();
-       const matchesSearch = !q || item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
-    const matchesType = selectedType === 'all' || item.type === selectedType;
-    const matchesCategory = selectedCategory === '' || item.category === selectedCategory;
-    return matchesSearch && matchesType && matchesCategory;
-  });
-
-  const filteredCategories = menuCategories
-    .filter((cat) => selectedType === 'all' || cat.type === selectedType)
-    .sort((a, b) => a.order - b.order);
-
-  const groupedMenuItems: Record<string, MenuItem[]> = useMemo(() => {
-    const g: Record<string, MenuItem[]> = {};
-    filteredMenuItems.forEach((item) => {
-      if (!g[item.category]) g[item.category] = [];
-      g[item.category].push(item);
+    return menuItems.filter((item) => {
+      const byType = selectedType === 'all' || item.type === selectedType;
+      const bySearch = !q || item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
+      return byType && bySearch;
     });
-    return g;
-  }, [filteredMenuItems]);
+  }, [menuItems, selectedType, menuSearchTerm]);
 
-  const toggleCategoryExpansion = (categoryId: string) => {
-    setExpandedCategories((prev) => ({ ...prev, [categoryId]: !prev[categoryId] }));
-  };
-
-  const toggleAllCategories = () => {
-    const newState = !allCategoriesExpanded;
-    setAllCategoriesExpanded(newState);
-    const updated: Record<string, boolean> = {};
-    filteredCategories.forEach((cat) => {
-      updated[cat.id] = newState;
+  // Categorías filtradas + conteo
+  const categoriesWithCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    baseFilteredItems.forEach((it) => {
+      counts[it.category] = (counts[it.category] || 0) + 1;
     });
-    setExpandedCategories(updated);
-  };
+    return menuCategories
+      .filter((cat) => selectedType === 'all' || cat.type === selectedType)
+      .map((cat) => ({ ...cat, count: counts[cat.id] || 0 }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => a.order - b.order);
+  }, [menuCategories, baseFilteredItems, selectedType]);
+
+  // Productos por categoría seleccionada
+  const productsOfSelectedCategory = useMemo(() => {
+    if (!selectedCategory) return [];
+    return baseFilteredItems.filter((it) => it.category === selectedCategory);
+  }, [baseFilteredItems, selectedCategory]);
 
   // === Helper: detectar mobile (md- breakpoint) ===
   const isMobileViewport = () => {
@@ -537,18 +559,12 @@ const OrdersPage: React.FC = () => {
       showToast('error', 'La orden está LISTA en cocina. Espera la entrega o agrega una nueva luego.');
       return;
     }
-
     const exists = selectedItems.find((i) => i.id === item.id);
-
     if (exists) {
-      setSelectedItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i))
-      );
+      setSelectedItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i)));
     } else {
       setSelectedItems((prev) => [...prev, { ...item, quantity: 1 }]);
     }
-
-    // ✅ Toast SOLO en mobile
     if (isMobileViewport()) {
       const label = exists ? `+1 ${item.name}` : `${item.name} agregado`;
       showToast('success', label);
@@ -584,10 +600,8 @@ const OrdersPage: React.FC = () => {
       return;
     }
     setSelectedTable(table);
-
-    // Autoselección de mesero por defecto si la mesa lo tiene (solo si existe en waiters)
     if (table.waiter?.name && !selectedWaiter) {
-      const match = waiters.find(w => w.name === table.waiter!.name) || null;
+      const match = waiters.find((w) => w.name === table.waiter!.name) || null;
       setSelectedWaiter(match);
     }
   };
@@ -610,8 +624,7 @@ const OrdersPage: React.FC = () => {
       showToast('error', 'La orden está LISTA en cocina');
       return;
     }
-
-    // ➜ Si estamos editando una orden de cocina y no hay ítems, CANCELAR y LIBERAR mesa
+    // cancelar y liberar si se edita y queda vacía
     if (orderType === 'mesa' && selectedTable && currentKitchenOrderId && selectedItems.length === 0) {
       cancelKitchenOrderAndFreeTable(selectedTable, currentKitchenOrderId);
       setSelectedItems([]);
@@ -619,7 +632,6 @@ const OrdersPage: React.FC = () => {
       navigate('/mesas');
       return;
     }
-
     if (selectedItems.length === 0) {
       showToast('error', 'La orden debe tener al menos un producto');
       return;
@@ -632,13 +644,12 @@ const OrdersPage: React.FC = () => {
       showToast('error', 'Selecciona el mesero responsable');
       return;
     }
-    // Requerimos nombre del cliente para ambos tipos (mesa y llevar)
     if (!customerName.trim()) {
       showToast('error', 'Ingresa el nombre del cliente');
       return;
     }
 
-    // Si hay una orden de cocina editable (new/preparing), ACTUALIZAR en vez de crear
+    // Actualizar existente
     if (orderType === 'mesa' && selectedTable && currentKitchenOrderId) {
       const list = loadKitchen();
       const idx = list.findIndex((o) => o.id === currentKitchenOrderId);
@@ -677,7 +688,7 @@ const OrdersPage: React.FC = () => {
       }
     }
 
-    // Si NO hay orden editable, crear una NUEVA
+    // Crear nueva
     const newOrder: Order = {
       id: `ORD-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
       type: orderType,
@@ -773,6 +784,7 @@ const OrdersPage: React.FC = () => {
       green: 'bg-green-50 text-green-700 hover:bg-green-100',
       purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100',
       pink: 'bg-pink-50 text-pink-700 hover:bg-pink-100',
+      indigo: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
     };
     return `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center ${map[color] || map.gray}`;
   };
@@ -780,14 +792,8 @@ const OrdersPage: React.FC = () => {
   // ---------- Resumen reutilizable ----------
   const renderSummary = (variant: 'mobile' | 'desktop' = 'desktop') => {
     const containerBase = 'rounded-xl shadow p-4';
-    const variantCls =
-      variant === 'mobile'
-        ? 'bg-blue-50 border border-blue-200'
-        : 'bg-white';
-    const titleCls =
-      variant === 'mobile'
-        ? 'font-medium text-lg mb-3 text-blue-900'
-        : 'font-medium text-lg mb-3';
+    const variantCls = variant === 'mobile' ? 'bg-blue-50 border border-blue-200' : 'bg-white';
+    const titleCls = variant === 'mobile' ? 'font-medium text-lg mb-3 text-blue-900' : 'font-medium text-lg mb-3';
     return (
       <div className={`${containerBase} ${variantCls}`}>
         {deliveredItems.length > 0 && (
@@ -795,7 +801,11 @@ const OrdersPage: React.FC = () => {
             <h3 className={`font-semibold text-sm mb-1 ${variant === 'mobile' ? 'text-blue-800' : 'text-gray-700'}`}>
               Entregado
             </h3>
-            <div className={`rounded-lg p-2 max-h-40 overflow-auto ${variant === 'mobile' ? 'bg-blue-100 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
+            <div
+              className={`rounded-lg p-2 max-h-40 overflow-auto ${
+                variant === 'mobile' ? 'bg-blue-100 border border-blue-200' : 'bg-green-50 border border-green-200'
+              }`}
+            >
               {deliveredItems.map((it, idx) => (
                 <div key={idx} className="flex justify-between text-xs text-gray-700">
                   <span className="truncate">
@@ -807,7 +817,11 @@ const OrdersPage: React.FC = () => {
                 </div>
               ))}
               {deliveredMeta && (
-                <div className={`mt-2 pt-1 flex justify-between text-xs font-medium border-t ${variant === 'mobile' ? 'border-blue-200 text-blue-900' : 'border-green-200 text-green-800'}`}>
+                <div
+                  className={`mt-2 pt-1 flex justify-between text-xs font-medium border-t ${
+                    variant === 'mobile' ? 'border-blue-200 text-blue-900' : 'border-green-200 text-green-800'
+                  }`}
+                >
                   <span>{deliveredMeta.itemsCount} ítems</span>
                   <span>${new Intl.NumberFormat('es-CO').format(deliveredMeta.total)}</span>
                 </div>
@@ -824,7 +838,10 @@ const OrdersPage: React.FC = () => {
         ) : (
           <div className="space-y-3 max-h-80 overflow-y-auto">
             {selectedItems.map((item) => (
-              <div key={item.id} className={`flex justify-between items-center p-2 rounded ${variant === 'mobile' ? 'bg-white/70' : 'bg-gray-50'}`}>
+              <div
+                key={item.id}
+                className={`flex justify-between items-center p-2 rounded ${variant === 'mobile' ? 'bg-white/70' : 'bg-gray-50'}`}
+              >
                 <div className="flex-1 text-left">
                   <p className="font-medium">{item.name}</p>
                   <p className="text-sm text-gray-600">${new Intl.NumberFormat('es-CO').format(item.price)}</p>
@@ -832,7 +849,9 @@ const OrdersPage: React.FC = () => {
                 <div className="flex items-center">
                   <button
                     onClick={() => updateItemQuantity(item.id, item.quantity - 1)}
-                    className={`px-2 py-1 rounded-l ${isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    className={`px-2 py-1 rounded-l ${
+                      isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
                     aria-label={`Disminuir ${item.name}`}
                     disabled={isEditLocked}
                   >
@@ -843,7 +862,9 @@ const OrdersPage: React.FC = () => {
                   </span>
                   <button
                     onClick={() => updateItemQuantity(item.id, item.quantity + 1)}
-                    className={`px-2 py-1 rounded-r ${isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    className={`px-2 py-1 rounded-r ${
+                      isEditLocked ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
                     aria-label={`Aumentar ${item.name}`}
                     disabled={isEditLocked}
                   >
@@ -851,7 +872,9 @@ const OrdersPage: React.FC = () => {
                   </button>
                   <button
                     onClick={() => removeItemFromOrder(item.id)}
-                    className={`ml-2 p-1 rounded ${isEditLocked ? 'text-red-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                    className={`ml-2 p-1 rounded ${
+                      isEditLocked ? 'text-red-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'
+                    }`}
                     aria-label={`Eliminar ${item.name}`}
                     disabled={isEditLocked}
                   >
@@ -871,10 +894,7 @@ const OrdersPage: React.FC = () => {
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <button
-            onClick={() => navigate('/mesas')}
-            className="py-2 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
-          >
+          <button onClick={() => navigate('/mesas')} className="py-2 px-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
             Volver a Mesas
           </button>
           <button
@@ -893,7 +913,7 @@ const OrdersPage: React.FC = () => {
               !selectedWaiter ||
               !customerName.trim()
                 ? 'bg-gray-400'
-                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700'
             }`}
           >
             <CheckIcon size={16} className="mr-1" />
@@ -913,7 +933,7 @@ const OrdersPage: React.FC = () => {
   return (
     <div className="p-4">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-xl mb-3 shadow-md">
+      <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-4 rounded-xl mb-3 shadow-md">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">
@@ -929,7 +949,6 @@ const OrdersPage: React.FC = () => {
               <p className="text-sm text-blue-100 mt-1">Estás editando la orden en cocina (estado: Orden/Preparación).</p>
             )}
           </div>
-          {/* Ir a Cocina se mantiene en el header, también en mobile */}
           <div className="flex space-x-2">
             <button
               className="px-4 py-2 bg-blue-500 text-white rounded-md text-sm font-medium hover:bg-blue-400 flex items-center"
@@ -944,14 +963,14 @@ const OrdersPage: React.FC = () => {
         {/* Selector tipo de orden */}
         <div className="mt-3 inline-flex rounded-lg overflow-hidden border border-white/30">
           <button
-            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'mesa' ? 'bg-white text-blue-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'mesa' ? 'bg-white text-indigo-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
             onClick={() => setOrderType('mesa')}
             disabled={isEditLocked}
           >
             Mesa
           </button>
           <button
-            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'llevar' ? 'bg-white text-blue-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+            className={`px-3 py-1.5 text-sm font-medium ${orderType === 'llevar' ? 'bg-white text-indigo-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
             onClick={() => setOrderType('llevar')}
             disabled={isEditLocked}
           >
@@ -969,7 +988,7 @@ const OrdersPage: React.FC = () => {
 
       {loading ? (
         <div className="flex justify-center my-8" role="status" aria-live="polite">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -986,7 +1005,7 @@ const OrdersPage: React.FC = () => {
                     type="button"
                     onClick={() => setLockHeaderInfo((v) => !v)}
                     className={`text-xs inline-flex items-center px-2 py-0.5 rounded ${
-                      lockHeaderInfo ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'
+                      lockHeaderInfo ? 'bg-gray-100 text-gray-700' : 'bg-indigo-100 text-indigo-700'
                     }`}
                     title={lockHeaderInfo ? 'Desbloquear edición' : 'Bloquear edición'}
                     disabled={isEditLocked}
@@ -1015,7 +1034,7 @@ const OrdersPage: React.FC = () => {
                 />
               </div>
 
-              {/* MESERO: justo debajo del nombre del cliente (solo MOBILE) */}
+              {/* MESERO móvil */}
               <div className="mt-3 md:hidden">
                 <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="waiterSelectMobile">
                   Mesero que lo atiende
@@ -1045,7 +1064,7 @@ const OrdersPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Campos extra para 'Para llevar' */}
+              {/* Para llevar */}
               {orderType === 'llevar' && (
                 <div className="grid grid-cols-1 gap-3 mt-3">
                   <div>
@@ -1078,7 +1097,7 @@ const OrdersPage: React.FC = () => {
                 </div>
               )}
 
-              {/* MESERO: bloque original solo para DESKTOP */}
+              {/* MESERO desktop */}
               <div className="mt-3 hidden md:block">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="waiterSelect">
@@ -1112,189 +1131,196 @@ const OrdersPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Resumen: visible en desktop; en mobile se muestra debajo del Menú con azul claro */}
+            {/* Resumen desktop */}
             <div className="hidden md:block">{renderSummary('desktop')}</div>
           </div>
 
-          {/* Panel derecho: Menú */}
+          {/* Panel derecho: Menú con TARJETAS y VARIEDAD DE COLORES */}
           <div className="md:col-span-2">
             <div className="bg-white rounded-xl shadow p-4">
-              {/* MOBILE: barra búsqueda una sola línea + botón colapsar */}
-              <div className="md:hidden mb-3">
-                <div className="relative w-full">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <SearchIcon size={16} className="text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Buscar productos..."
-                    value={menuSearchTerm}
-                    onChange={(e) => setMenuSearchTerm(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm leading-5"
-                    aria-label="Buscar productos"
-                  />
-                </div>
-                <div className="mt-2">
-                  <button
-                    onClick={toggleAllCategories}
-                    className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center ${
-                      allCategoriesExpanded ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                    }`}
-                    aria-label={allCategoriesExpanded ? 'Colapsar todo' : 'Expandir todo'}
-                  >
-                    {allCategoriesExpanded ? (
-                      <>
-                        <EyeOffIcon size={16} className="mr-1" />
-                        Colapsar todo
-                      </>
-                    ) : (
-                      <>
-                        <EyeIcon size={16} className="mr-1" />
-                        Expandir todo
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* DESKTOP: título + colapsar + búsqueda lado a lado */}
-              <div className="hidden md:flex justify-between items-center mb-3">
-                <h3 className="font-medium text-lg">Menú</h3>
+              {/* Barra superior */}
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={toggleAllCategories}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center ${
-                      allCategoriesExpanded ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {allCategoriesExpanded ? (
-                      <>
-                        <EyeOffIcon size={16} className="mr-1" />
-                        Colapsar todo
-                      </>
-                    ) : (
-                      <>
-                        <EyeIcon size={16} className="mr-1" />
-                        Expandir todo
-                      </>
-                    )}
-                  </button>
-                  <div className="relative">
+                  {selectedCategory ? (
+                    <button
+                      onClick={() => setSelectedCategory('')}
+                      className={softBtn('indigo')}
+                      aria-label="Volver a categorías"
+                    >
+                      <ArrowLeftIcon size={16} className="mr-1" />
+                      Categorías
+                    </button>
+                  ) : (
+                    <span className="text-sm font-medium text-gray-700">Elige una categoría</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="relative flex-1 md:flex-none">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <SearchIcon size={16} className="text-gray-400" />
                     </div>
                     <input
                       type="text"
-                      placeholder="Buscar productos..."
+                      placeholder={selectedCategory ? 'Buscar en esta categoría…' : 'Buscar productos…'}
                       value={menuSearchTerm}
                       onChange={(e) => setMenuSearchTerm(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-64"
+                      className="pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm leading-5 w-full md:w-64"
                       aria-label="Buscar productos"
                     />
+                  </div>
+                  <div className="hidden md:flex overflow-x-auto pb-1 space-x-2">
+                    <button
+                      className={softBtn(selectedType === 'all' ? 'indigo' : 'gray')}
+                      onClick={() => setSelectedType('all')}
+                    >
+                      Todos
+                    </button>
+                    {productTypes.map((type) => (
+                      <button
+                        key={type.id}
+                        className={softBtn(selectedType === type.id ? type.color : 'gray')}
+                        onClick={() => setSelectedType(type.id)}
+                      >
+                        {getIconByName(type.icon)} {type.name}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Filtros tipo */}
-              <div className="flex overflow-x-auto pb-2 mb-4 space-x-2">
-                <button
-                  className={softBtn(selectedType === 'all' ? 'blue' : 'gray')}
-                  onClick={() => {
-                    setSelectedType('all');
-                    setSelectedCategory('');
-                  }}
-                >
+              {/* Filtros tipo en mobile */}
+              <div className="md:hidden flex overflow-x-auto pb-2 mb-2 space-x-2">
+                <button className={softBtn(selectedType === 'all' ? 'indigo' : 'gray')} onClick={() => setSelectedType('all')}>
                   Todos
                 </button>
                 {productTypes.map((type) => (
                   <button
                     key={type.id}
                     className={softBtn(selectedType === type.id ? type.color : 'gray')}
-                    onClick={() => {
-                      setSelectedType(type.id);
-                      setSelectedCategory('');
-                    }}
+                    onClick={() => setSelectedType(type.id)}
                   >
                     {getIconByName(type.icon)} {type.name}
                   </button>
                 ))}
               </div>
 
-              {filteredMenuItems.length === 0 ? (
-                <p className="text-gray-500 my-8 text-center">No se encontraron productos</p>
-              ) : (
-                <div className="space-y-4">
-                  {filteredCategories.map((category) => {
-                    const categoryItems = groupedMenuItems[category.id] || [];
-                    if (categoryItems.length === 0) return null;
-                    return (
-                      <div key={category.id}>
-                        <div
-                          className="flex items-center justify-between cursor-pointer mb-2 bg-gray-50 p-2 rounded-lg"
-                          onClick={() => toggleCategoryExpansion(category.id)}
-                        >
-                          <h4 className="font-medium text-gray-700">{category.name}</h4>
-                          <div className="flex items-center">
-                            <span className="text-xs text-gray-500 mr-2">{categoryItems.length} productos</span>
-                            {expandedCategories[category.id] ? (
-                              <ChevronDownIcon size={16} className="text-gray-500" />
-                            ) : (
-                              <ChevronRightIcon size={16} className="text-gray-500" />
-                            )}
-                          </div>
-                        </div>
-
-                        {expandedCategories[category.id] && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                            {categoryItems.map((item) => (
-                              <button
-                                key={item.id}
-                                className={`text-left p-3 border rounded-lg transition-colors focus:outline-none ${
-                                  isEditLocked
-                                    ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                                    : 'border-gray-200 hover:bg-blue-50 hover:border-blue-200 focus:ring-2 focus:ring-indigo-500'
-                                }`}
-                                onClick={() => !isEditLocked && addItemToOrder(item)}
-                                disabled={isEditLocked}
-                                aria-label={`Agregar ${item.name}`}
+              {/* Vista A: TARJETAS DE CATEGORÍAS — altura fija en mobile y texto que se adapta */}
+              {!selectedCategory && (
+                <>
+                  {categoriesWithCount.length === 0 ? (
+                    <p className="text-gray-500 my-8 text-center">No hay categorías con productos para mostrar</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {categoriesWithCount.map((cat) => {
+                        const pal = paletteByCategory(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => setSelectedCategory(cat.id)}
+                            className={`group relative text-left p-3 rounded-xl border ${pal.border} focus:outline-none ${pal.ring} focus-visible:ring-2 bg-gradient-to-br ${pal.gradFrom} ${pal.gradTo} ${pal.hover} transition-colors
+                                        flex flex-col justify-between h-28 sm:h-32 lg:h-36`}
+                            aria-label={`Abrir ${cat.name}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <h4
+                                className={`font-semibold ${pal.text} line-clamp-2
+                                            text-[13px] sm:text-base`}
                               >
-                                <div className="flex justify-between">
-                                  <h5 className="font-medium">{item.name}</h5>
-                                  <div className="flex items-center">
-                                    <span className="text-gray-600 mr-2">
-                                      ${new Intl.NumberFormat('es-CO').format(item.price)}
-                                    </span>
-                                    <PlusIcon size={18} className={isEditLocked ? 'text-gray-300' : 'text-blue-600'} />
-                                  </div>
-                                </div>
-                                {item.description && (
-                                  <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description}</p>
-                                )}
-                                <div className="flex items-center mt-1 text-xs text-gray-500">
-                                  {typeof item.preparationTime === 'number' && (
-                                    <span className="flex items-center mr-2">
-                                      <ClockIcon size={12} className="mr-1" />
-                                      {item.preparationTime} min
-                                    </span>
-                                  )}
-                                  {item.isCombo && (
-                                    <span className="flex items-center text-blue-600">
-                                      <PackageIcon size={12} className="mr-1" />
-                                      Combo
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                                {cat.name}
+                              </h4>
+                              <ChevronRightIcon className="text-gray-400" size={18} />
+                            </div>
+                            <div className={`mt-2 text-[11px] sm:text-xs inline-flex px-2 py-1 rounded-full ${pal.badge} self-start`}>
+                              {cat.count} {cat.count === 1 ? 'producto' : 'productos'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
 
-              {/* MOBILE: Resumen debajo de Menú con azul claro */}
+              {/* Vista B: TARJETAS DE PRODUCTOS — altura fija en mobile y texto que se adapta */}
+              {!!selectedCategory && (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedCategory('')}
+                        className="inline-flex items-center px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
+                        aria-label="Volver a categorías"
+                      >
+                        <ArrowLeftIcon size={16} className="mr-1" />
+                        Categorías
+                      </button>
+                      <span className="text-sm text-gray-600">
+                        {(menuCategories.find((c) => c.id === selectedCategory)?.name as string) || 'Categoría'} ·{' '}
+                        {productsOfSelectedCategory.length} items
+                      </span>
+                    </div>
+                  </div>
+
+                  {productsOfSelectedCategory.length === 0 ? (
+                    <p className="text-gray-500 my-8 text-center">No hay productos en esta categoría</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {productsOfSelectedCategory.map((item) => {
+                        const pal = paletteByProduct(item);
+                        return (
+                          <button
+                            key={item.id}
+                            className={`text-left p-3 rounded-xl border ${pal.border} ${pal.card} ${pal.hover} transition-colors focus:outline-none ${pal.ring} focus-visible:ring-2
+                                        flex flex-col justify-between h-28 sm:h-32 lg:h-36`}
+                            onClick={() => !isEditLocked && addItemToOrder(item)}
+                            disabled={isEditLocked}
+                            aria-label={`Agregar ${item.name}`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <h5
+                                className={`font-semibold ${pal.text} line-clamp-2
+                                            text-[13px] sm:text-base`}
+                              >
+                                {item.name}
+                              </h5>
+                              <div className="flex items-center ml-2 shrink-0">
+                                <span className="text-[12px] sm:text-sm text-gray-700 mr-2">
+                                  ${new Intl.NumberFormat('es-CO').format(item.price)}
+                                </span>
+                                <PlusIcon size={18} className={`${pal.icon} ${isEditLocked ? 'opacity-40' : ''}`} />
+                              </div>
+                            </div>
+
+                            {item.description && (
+                              <p className="text-[12px] sm:text-sm text-gray-700 mt-1 line-clamp-2">
+                                {item.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center mt-2 text-[11px] sm:text-xs text-gray-700">
+                              {typeof item.preparationTime === 'number' && (
+                                <span className={`flex items-center mr-2 ${pal.text}`}>
+                                  <ClockIcon size={12} className="mr-1" />
+                                  {item.preparationTime} min
+                                </span>
+                              )}
+                              {item.isCombo && (
+                                <span className={`flex items-center ${pal.icon}`}>
+                                  <PackageIcon size={12} className="mr-1" />
+                                  Combo
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* MOBILE: Resumen debajo de Menú */}
               <div className="mt-4 md:hidden">{renderSummary('mobile')}</div>
             </div>
           </div>
