@@ -162,14 +162,43 @@ const occupyTableForArrival = (tableId: string, customerName: string) => {
 /** ===================== Página ===================== **/
 const ReservationsPage: React.FC = () => {
   const { showToast } = useToast();
-  // Opcionalmente podemos recibir estilos desde el layout. Si no existen, usamos defaults.
-  const outletCtx = useOutletContext<any>();
-  const softBtn =
-    outletCtx?.softBtn ||
-    'inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
-  const ctaGrad =
-    outletCtx?.ctaGrad ||
-    'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50';
+
+  // ================== Estilos (alineados con Menú) ==================
+  const softBtn = (color: string) => {
+    const colorMap: Record<string, string> = {
+      blue: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+      gray: 'bg-gray-50 text-gray-700 hover:bg-gray-100',
+      amber: 'bg-amber-50 text-amber-700 hover:bg-amber-100',
+      red: 'bg-red-50 text-red-700 hover:bg-red-100',
+      green: 'bg-green-50 text-green-700 hover:bg-green-100',
+      purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100',
+      pink: 'bg-pink-50 text-pink-700 hover:bg-pink-100',
+      indigo: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
+    };
+    return [
+      'px-3 py-2 rounded-lg',
+      'text-[12px] sm:text-sm font-medium',
+      'transition-colors',
+      'flex items-center justify-center',
+      'whitespace-nowrap',
+      'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+      colorMap[color] || colorMap.gray,
+    ].join(' ');
+  };
+
+  const ctaGrad = () =>
+    [
+      'px-4 py-2',
+      'bg-gradient-to-r from-blue-600 to-indigo-600 text-white',
+      'rounded-lg',
+      'text-[12px] sm:text-sm font-medium',
+      'hover:from-blue-700 hover:to-indigo-700',
+      'transition-colors',
+      'flex items-center justify-center',
+      'whitespace-nowrap',
+      'shadow-sm',
+      'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+    ].join(' ');
 
   /** Sesión de reservas **/
   const [sessionId, setSessionId] = useState<string>('');
@@ -282,6 +311,7 @@ const ReservationsPage: React.FC = () => {
 
     const sel = form.tableId ? tables.find((t) => String(t.id) === String(form.tableId)) : undefined;
 
+    // Siempre crear como CONFIRMADA (aunque no tenga mesa asignada)
     const newRes: Reservation = {
       id: `r${Date.now()}`,
       name: form.name.trim(),
@@ -292,7 +322,7 @@ const ReservationsPage: React.FC = () => {
       guests: form.guests,
       tableId: sel ? String(sel.id) : '',
       tableNumber: sel ? sel.number : 0,
-      status: sel ? 'confirmed' : 'pending',
+      status: 'confirmed',
       notes: form.notes.trim() || undefined,
       createdAt: new Date().toISOString(),
       sessionId,
@@ -303,12 +333,13 @@ const ReservationsPage: React.FC = () => {
     saveReservations(next);
     reserveTableIfToday(newRes);
 
-    showToast('success', 'Reservación creada');
+    showToast('success', 'Reservación creada y confirmada');
     setShowReservationModal(false);
     resetForm();
   };
 
   /** Acciones tarjeta **/
+  // Se deja por si existieran reservas previas "pending", pero ya no se renderiza el botón de Confirmar en UI.
   const confirmReservation = (res: Reservation) => {
     const next = reservations.map((r) => (r.id === res.id ? { ...r, status: 'confirmed' as const } : r));
     setReservationsState(next);
@@ -337,16 +368,14 @@ const ReservationsPage: React.FC = () => {
 
   /** UI helpers **/
   const tableLabel = (t: TableItem) =>
-    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${
-      t.alias ? ` · ${t.alias}` : ''
-    }`;
+    `Mesa ${t.number}${t.capacity ? ` (${t.capacity} pers.)` : ''}${t.zone ? ` · ${t.zone}` : ''}${t.alias ? ` · ${t.alias}` : ''}`;
 
   /** ===== Render ===== **/
   return (
     <div className="space-y-4">
-      <div className="bg-gradient-to-r from-indigo-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
-        <div className="bg-white/70 backdrop-blur p-3 rounded-2xl">
-          <h1 className="text-2xl font-bold text-gray-900">Reservaciones</h1>
+      <div className="bg-gradient-to-r from-blue-50 via-violet-50 to-pink-50 p-4 rounded-3xl shadow-sm border border-white/60">
+        <div className="bg-white/60 p-3 rounded-2xl">
+          <h1 className="text-2xl font-bold text-gray-800">Reservaciones</h1>
           <p className="text-sm text-gray-600">Solo se muestran las reservaciones creadas en esta sesión</p>
         </div>
       </div>
@@ -408,7 +437,7 @@ const ReservationsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setReservationFilter('all')}
-            className={`${softBtn} w-full ${reservationFilter === 'all' ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`${softBtn(reservationFilter === 'all' ? 'blue' : 'gray')} w-full`}
             aria-pressed={reservationFilter === 'all'}
           >
             <CalendarIcon size={16} className="mr-2" aria-hidden />
@@ -417,7 +446,7 @@ const ReservationsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setReservationFilter('today')}
-            className={`${softBtn} w-full ${reservationFilter === 'today' ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`${softBtn(reservationFilter === 'today' ? 'amber' : 'gray')} w-full`}
             aria-pressed={reservationFilter === 'today'}
           >
             <CalendarIcon size={16} className="mr-2" aria-hidden />
@@ -429,7 +458,7 @@ const ReservationsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setReservationFilter('upcoming')}
-            className={`${softBtn} w-full ${reservationFilter === 'upcoming' ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`${softBtn(reservationFilter === 'upcoming' ? 'purple' : 'gray')} w-full`}
             aria-pressed={reservationFilter === 'upcoming'}
           >
             <CalendarIcon size={16} className="mr-2" aria-hidden />
@@ -438,7 +467,7 @@ const ReservationsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setReservationFilter('pending')}
-            className={`${softBtn} w-full ${reservationFilter === 'pending' ? 'ring-2 ring-indigo-500' : ''}`}
+            className={`${softBtn(reservationFilter === 'pending' ? 'pink' : 'gray')} w-full`}
             aria-pressed={reservationFilter === 'pending'}
           >
             <UserSearchIcon size={16} className="mr-2" aria-hidden />
@@ -447,9 +476,9 @@ const ReservationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CTA crear */}
+      {/* CTA crear (desktop) */}
       <div className="flex justify-end">
-        <button type="button" className={ctaGrad} onClick={() => setShowReservationModal(true)}>
+        <button type="button" className={ctaGrad()} onClick={() => setShowReservationModal(true)}>
           <PlusIcon size={16} className="mr-2" aria-hidden />
           Nueva reservación
         </button>
@@ -529,36 +558,31 @@ const ReservationsPage: React.FC = () => {
                 {r.notes && <p className="mt-2 text-sm text-gray-600">{r.notes}</p>}
 
                 <div className="mt-3 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-                  {r.status !== 'cancelled' && r.status !== 'completed' && (
+                  {/* Se elimina botón Confirmar en UI (todas crean como confirmadas).
+                      Si llegaran reservas antiguas en 'pending', no mostramos Confirmar para mantener la regla nueva. */}
+
+                  {/* Cancelar: solo permitido en 'pending' o 'confirmed'. Nunca cuando 'completed' o 'cancelled'. */}
+                  {(r.status === 'pending' || r.status === 'confirmed') && (
                     <button
                       type="button"
-                      className={softBtn}
-                      onClick={() => confirmReservation(r)}
-                      aria-label="Confirmar reservación"
-                    >
-                      <CheckIcon size={16} className="mr-2 text-green-600" aria-hidden />
-                      Confirmar
-                    </button>
-                  )}
-                  {r.status !== 'cancelled' && (
-                    <button
-                      type="button"
-                      className={softBtn}
+                      className={softBtn('red')}
                       onClick={() => cancelReservation(r)}
                       aria-label="Cancelar reservación"
                     >
-                      <XIcon size={16} className="mr-2 text-red-600" aria-hidden />
+                      <XIcon size={16} className="mr-2" aria-hidden />
                       Cancelar
                     </button>
                   )}
+
+                  {/* Llegó: solo visible cuando está confirmada */}
                   {r.status === 'confirmed' && (
                     <button
                       type="button"
-                      className={softBtn}
+                      className={softBtn('indigo')}
                       onClick={() => registerArrival(r)}
                       aria-label="Registrar llegada"
                     >
-                      <CheckIcon size={16} className="mr-2 text-indigo-600" aria-hidden />
+                      <CheckIcon size={16} className="mr-2" aria-hidden />
                       Llegó
                     </button>
                   )}
@@ -566,6 +590,28 @@ const ReservationsPage: React.FC = () => {
               </article>
             ))
         )}
+      </div>
+
+      {/* Espaciador para que la sticky no tape el contenido (igual que en Menú) */}
+      <div className="h-24 md:hidden" aria-hidden />
+
+      {/* ===== BARRA STICKY EN MOBILE — MISMA ALTURA/ESTILO QUE "NUEVO PRODUCTO" ===== */}
+      <div
+        className="fixed md:hidden left-0 right-0 z-[1] bg-white/90 backdrop-blur border-t border-gray-200 px-4 pointer-events-none"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
+        role="region"
+        aria-label="Acciones de reservaciones"
+      >
+        <div className="py-2">
+          <button
+            className={`w-full inline-flex items-center justify-center rounded-xl px-4 py-3 text-base font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 pointer-events-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700`}
+            onClick={() => setShowReservationModal(true)}
+            aria-label="Crear nueva reservación"
+          >
+            <PlusIcon size={18} className="mr-2" />
+            Nueva reservación
+          </button>
+        </div>
       </div>
 
       {/* Modal crear (Sheet simple para mobile) */}
@@ -681,13 +727,13 @@ const ReservationsPage: React.FC = () => {
             <div className="p-4 border-t flex gap-2 justify-end">
               <button
                 type="button"
-                className={softBtn}
+                className={softBtn('gray')}
                 onClick={() => setShowReservationModal(false)}
               >
                 <XIcon size={16} className="mr-2" aria-hidden />
                 Cancelar
               </button>
-              <button type="button" className={ctaGrad} onClick={handleSaveReservation}>
+              <button type="button" className={ctaGrad()} onClick={handleSaveReservation}>
                 <CheckIcon size={16} className="mr-2" aria-hidden />
                 Guardar
               </button>
