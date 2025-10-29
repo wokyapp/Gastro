@@ -1,4 +1,3 @@
-// src/pages/gastrobar/OrdersPage.tsx
 import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -113,6 +112,14 @@ interface KitchenOrderItem {
   price?: number;
 }
 
+interface ChangeEntry {
+  id: string;
+  at: string;          // ISO
+  summary: string;     // "Actualización de ítems (3 cambios)"
+  details?: string[];  // ["+ 2× Papas", "~ Hamburguesa: 1→2", "- 1× Limonada"]
+  deltas?: Record<string, number>; // id -> delta
+}
+
 interface KitchenOrder {
   id: string;
   tableNumber: string;
@@ -124,6 +131,13 @@ interface KitchenOrder {
   priority: 'normal' | 'high';
   notes?: string;
   timeElapsed: number;
+
+  // NUEVO: tracking de cambios
+  updatedAt?: string;
+  changeLog?: ChangeEntry[];
+  unseenChanges?: number;
+  lastDelta?: Record<string, number>;
+  lastChangeAt?: string;
 }
 
 // Runtime mesa
@@ -338,7 +352,7 @@ const OrdersPage: React.FC = () => {
       baseTables.sort((a, b) => (a.number ?? 9999) - (b.number ?? 9999));
       setAvailableTables(baseTables);
 
-      // Menú mock
+      // Menú mock (igual al anterior ejemplo)
       const mockMenu: MenuItem[] = [
         { id: 1, name: 'Hamburguesa Clásica', price: 18000, category: 'cat-2', type: 'food', description: 'Carne de res, queso, lechuga, tomate y cebolla', preparationTime: 20 },
         { id: 2, name: 'Papas Fritas', price: 8000, category: 'cat-1', type: 'food', description: 'Papas fritas con sal', preparationTime: 10 },
@@ -618,6 +632,52 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  // === buildDiff: construye delta de items ===
+  type KOItem = KitchenOrderItem;
+  const buildDiff = (prev: KOItem[], next: KOItem[]): ChangeEntry | null => {
+    const A: Record<string, KOItem> = {};
+    const B: Record<string, KOItem> = {};
+    prev.forEach((p) => (A[String(p.id)] = p));
+    next.forEach((n) => (B[String(n.id)] = n));
+
+    const details: string[] = [];
+    const deltas: Record<string, number> = {};
+    let changes = 0;
+
+    for (const n of next) {
+      const key = String(n.id);
+      const p = A[key];
+      if (!p) {
+        details.push(`+ ${n.quantity}× ${n.name}`);
+        deltas[key] = (deltas[key] || 0) + n.quantity;
+        changes++;
+      } else if (p.quantity !== n.quantity) {
+        const delta = n.quantity - p.quantity;
+        details.push(`~ ${p.name}: ${p.quantity}→${n.quantity}`);
+        if (delta !== 0) deltas[key] = (deltas[key] || 0) + delta;
+        changes++;
+      }
+    }
+
+    for (const p of prev) {
+      const key = String(p.id);
+      if (!B[key]) {
+        details.push(`- ${p.quantity}× ${p.name}`);
+        deltas[key] = (deltas[key] || 0) - p.quantity;
+        changes++;
+      }
+    }
+
+    if (changes === 0) return null;
+    return {
+      id: `chg-${Date.now()}`,
+      at: new Date().toISOString(),
+      summary: `Actualización de ítems (${changes} cambio${changes === 1 ? '' : 's'})`,
+      details,
+      deltas,
+    };
+  };
+
   // === Enviar / Actualizar orden en cocina ===
   const handleSubmitOrder = () => {
     if (isEditLocked) {
@@ -654,6 +714,7 @@ const OrdersPage: React.FC = () => {
       const list = loadKitchen();
       const idx = list.findIndex((o) => o.id === currentKitchenOrderId);
       if (idx >= 0) {
+        // default prep time
         const defaultPrep = (it: MenuItem) => {
           if (typeof it.preparationTime === 'number') return it.preparationTime;
           if (it.type === 'drink') return 5;
@@ -669,11 +730,20 @@ const OrdersPage: React.FC = () => {
           price: it.price,
         }));
 
+        const prevItems = list[idx].items || [];
+        const change = buildDiff(prevItems, nextItems);
+
         list[idx] = {
           ...list[idx],
           items: nextItems,
           waiter: selectedWaiter?.name || list[idx].waiter,
-        };
+          updatedAt: new Date().toISOString(),
+          changeLog: change ? [change, ...(list[idx] as any).changeLog ?? []] : (list[idx] as any).changeLog,
+          unseenChanges: change ? (((list[idx] as any).unseenChanges ?? 0) + 1) : (list[idx] as any).unseenChanges,
+          lastDelta: change?.deltas || (list[idx] as any).lastDelta,
+          lastChangeAt: change ? new Date().toISOString() : (list[idx] as any).lastChangeAt,
+        } as any;
+
         saveKitchen(list);
 
         const rt = getRuntime();
@@ -742,6 +812,13 @@ const OrdersPage: React.FC = () => {
       createdAt: new Date().toISOString(),
       priority: 'normal',
       timeElapsed: 0,
+
+      // inicial sin cambios
+      updatedAt: undefined,
+      changeLog: [],
+      unseenChanges: 0,
+      lastDelta: undefined,
+      lastChangeAt: undefined,
     };
 
     pushToKitchen(kitchenPayload);
@@ -1135,14 +1212,12 @@ const OrdersPage: React.FC = () => {
             <div className="hidden md:block">{renderSummary('desktop')}</div>
           </div>
 
-          {/* Panel derecho: Menú con TARJETAS y VARIEDAD DE COLORES */}
+          {/* Panel derecho: Menú */}
           <div className="md:col-span-2">
             <div className="bg-white rounded-xl shadow p-4">
               {/* Barra superior */}
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  {/* ⛔ Se elimina el botón azul "← Categorías".
-                      Mostramos solo una etiqueta discreta (o el nombre de la categoría activa). */}
                   {selectedCategory ? (
                     <span className="text-sm font-medium text-gray-700">
                       {(menuCategories.find((c) => c.id === selectedCategory)?.name as string) || 'Categoría'}
@@ -1202,7 +1277,7 @@ const OrdersPage: React.FC = () => {
                 ))}
               </div>
 
-              {/* Vista A: TARJETAS DE CATEGORÍAS — altura fija en mobile y texto que se adapta */}
+              {/* Categorías */}
               {!selectedCategory && (
                 <>
                   {categoriesWithCount.length === 0 ? (
@@ -1239,7 +1314,7 @@ const OrdersPage: React.FC = () => {
                 </>
               )}
 
-              {/* Vista B: TARJETAS DE PRODUCTOS — altura fija en mobile y texto que se adapta */}
+              {/* Productos */}
               {!!selectedCategory && (
                 <>
                   <div className="flex items-center justify-between mb-2">

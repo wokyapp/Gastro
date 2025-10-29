@@ -25,6 +25,14 @@ interface OrderItem {
   price?: number;
 }
 
+interface ChangeEntry {
+  id: string;
+  at: string;
+  summary: string;
+  details?: string[];
+  deltas?: Record<string, number>;
+}
+
 interface KitchenOrder {
   id: string;
   tableNumber: string; // ej: "12" o "Llevar"
@@ -36,6 +44,13 @@ interface KitchenOrder {
   priority: 'normal' | 'high';
   notes?: string;
   timeElapsed: number; // minutos
+
+  // tracking de cambios
+  updatedAt?: string;
+  changeLog?: ChangeEntry[];
+  unseenChanges?: number;
+  lastDelta?: Record<string, number>;
+  lastChangeAt?: string;
 }
 
 // Cash types (compatibles con Caja)
@@ -68,8 +83,8 @@ const KitchenView: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<KitchenOrder | null>(null);
   const [showOrderDetails, setShowOrderDetails] = useState(false);
 
-  // ======== NUEVO (Mobile) =========
-  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+  // ======== Mobile =========
+  const [isMobile, setIsMobile] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [activeTab, setActiveTab] = useState<KitchenOrder['status']>('new');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -138,7 +153,6 @@ const KitchenView: React.FC = () => {
       const prev = raw ? JSON.parse(raw) : [];
       const next = [{ ...payload, read: false }, ...prev];
       localStorage.setItem(LS_GLOBAL_NOTIFS, JSON.stringify(next));
-      // Lanzamos StorageEvent para que otras pestañas/layouts lo capten
       window.dispatchEvent(new StorageEvent('storage', { key: LS_GLOBAL_NOTIFS, newValue: JSON.stringify(next) }));
     } catch {
       // noop
@@ -243,6 +257,14 @@ const KitchenView: React.FC = () => {
   const viewOrderDetails = (order: KitchenOrder) => {
     setSelectedOrder(order);
     setShowOrderDetails(true);
+
+    // Al abrir detalles, limpiar "no vistos" y (opcional) deltas
+    if ((order.unseenChanges ?? 0) > 0 || order.lastDelta) {
+      const next = orders.map(o =>
+        o.id === order.id ? { ...o, unseenChanges: 0, lastDelta: undefined } : o
+      );
+      setAndPersist(next);
+    }
   };
 
   // === ENTREGAR: actualiza runtime + caja y retira de cocina ===
@@ -380,11 +402,21 @@ const KitchenView: React.FC = () => {
     return (
       <div
         key={order.id}
-        className={`border rounded-xl shadow-sm overflow-hidden ${bgByState}`}
+        className={`relative border rounded-xl shadow-sm overflow-hidden ${bgByState}`}
         onTouchStart={(e) => onTouchStart(e, order.id)}
         onTouchMove={onTouchMove}
         onTouchEnd={(e) => onTouchEnd(order, e)}
       >
+        {(order.unseenChanges ?? 0) > 0 && (
+          <span
+            className="absolute top-2 right-2 z-10 inline-flex items-center justify-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-blue-600 text-white animate-bounce"
+            title="Nuevas actualizaciones"
+            aria-live="polite"
+          >
+            +{order.unseenChanges}
+          </span>
+        )}
+
         <div className="flex justify-between items-center p-3 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-gray-900">{order.id}</span>
@@ -398,6 +430,14 @@ const KitchenView: React.FC = () => {
                 <span className="text-gray-600">Mesero: {order.waiter}</span>
               </>
             ) : null}
+            {order.lastChangeAt && (
+              <>
+                <span className="text-gray-400" aria-hidden>•</span>
+                <span className="text-xs text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                  Actualización
+                </span>
+              </>
+            )}
           </div>
           <div className="flex gap-1">
             <button
@@ -431,18 +471,33 @@ const KitchenView: React.FC = () => {
 
         <div className="p-3">
           <div className="space-y-2 mb-3">
-            {order.items.map((it) => (
-              <div key={String(it.id)} className="flex justify-between gap-3">
-                <div className="min-w-0">
-                  <span className="font-medium text-gray-900">{it.quantity}×</span>{' '}
-                  <span className="text-gray-800">{it.name}</span>
-                  {it.notes && <p className="text-xs text-gray-500 truncate">{it.notes}</p>}
+            {order.items.map((it) => {
+              const d = order.lastDelta?.[String(it.id)] ?? 0;
+              const hasDelta = d !== 0;
+              const deltaCls =
+                d > 0 ? 'bg-green-100 text-green-800 ring-green-200'
+                      : 'bg-rose-100 text-rose-800 ring-rose-200';
+              return (
+                <div key={String(it.id)} className="flex justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-900">{it.quantity}×</span>{' '}
+                    <span className="text-gray-800">{it.name}</span>
+                    {hasDelta && (
+                      <span
+                        className={`ml-2 align-middle inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ring-1 ${deltaCls}`}
+                        title={d > 0 ? `Aumentó ${d}` : `Disminuyó ${Math.abs(d)}`}
+                      >
+                        {d > 0 ? `+${d}` : `${d}`}
+                      </span>
+                    )}
+                    {it.notes && <p className="text-xs text-gray-500 truncate">{it.notes}</p>}
+                  </div>
+                  <span className="shrink-0 text-[11px] bg-indigo-100 text-indigo-800 py-0.5 px-2 rounded-full self-start">
+                    {it.category}
+                  </span>
                 </div>
-                <span className="shrink-0 text-[11px] bg-indigo-100 text-indigo-800 py-0.5 px-2 rounded-full self-start">
-                  {it.category}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex justify-between items-center text-sm">
@@ -453,7 +508,7 @@ const KitchenView: React.FC = () => {
               </span>
             </div>
 
-            {/* Botón de acción principal (tamaño táctil >=44px) */}
+            {/* Botón de acción principal */}
             <button
               onClick={statusAction.onClick}
               className={`${statusAction.color} text-white px-3 py-2 rounded-lg text-sm flex items-center justify-center min-h-[44px] min-w-[44px]`}
@@ -526,6 +581,30 @@ const KitchenView: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {o.changeLog && o.changeLog.length > 0 && (
+              <div>
+                <p className="text-sm text-gray-500 mb-2">Historial de cambios</p>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+                  {o.changeLog.slice(0, 10).map((chg) => (
+                    <div key={chg.id} className="p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{chg.summary}</p>
+                        <span className="text-[11px] text-gray-500">
+                          {new Date(chg.at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {chg.details && chg.details.length > 0 && (
+                        <ul className="mt-1 list-disc ml-5 text-sm text-gray-600">
+                          {chg.details.map((d, i) => <li key={i}>{d}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <p className="text-sm text-gray-500 mb-2">Ítems</p>
               <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
@@ -694,7 +773,7 @@ const KitchenView: React.FC = () => {
           )}
         </main>
 
-        {/* Footer tip (accesible) */}
+        {/* Footer tip */}
         <footer className="px-4 pb-4 pt-2 bg-white border-t border-gray-200 text-xs text-gray-500">
           <p className="leading-relaxed">
             Sugerencia: desliza la tarjeta a la izquierda para avanzar de estado, o a la derecha para retroceder.
@@ -706,7 +785,7 @@ const KitchenView: React.FC = () => {
     );
   }
 
-  // DESKTOP / TABLET: Mantener layout existente (3 columnas)
+  // DESKTOP / TABLET
   return (
     <div className="h-full">
       <div className="flex justify-between items-center mb-4">
